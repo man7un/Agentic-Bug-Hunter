@@ -186,6 +186,48 @@ else
         log_warn "tools/unkover/unkover not found — skipping"
 fi
 
+# apkleaks — APK secret/endpoint scanner (needs pyaxmlparser + a JVM for jadx)
+echo ""
+echo "[*] Installing apkleaks dependencies..."
+APKLEAKS_REQS="$SCRIPT_DIR/tools/apkleaks/requirements.txt"
+if [ -f "$APKLEAKS_REQS" ]; then
+    if python3 -m pip install -q -r "$APKLEAKS_REQS"; then
+        log_ok "apkleaks dependencies installed"
+    else
+        log_err "Failed to install apkleaks dependencies — run manually:"
+        log_err "  pip install -r tools/apkleaks/requirements.txt"
+    fi
+    if command -v java &>/dev/null; then
+        log_ok "Java found (jadx decompiler will run)"
+    else
+        log_warn "Java not found — jadx needs a JRE. Install one (e.g. 'apt install default-jre')"
+    fi
+else
+    log_warn "tools/apkleaks not found — skipping"
+fi
+
+# subcat — subdomain enum + Playwright screenshot report
+echo ""
+echo "[*] Installing subcat dependencies..."
+SUBCAT_REQS="$SCRIPT_DIR/tools/subcat/requirements.txt"
+if [ -f "$SUBCAT_REQS" ]; then
+    if python3 -m pip install -q -r "$SUBCAT_REQS"; then
+        log_ok "subcat dependencies installed"
+        echo "    Installing Playwright's Chromium (needed for screenshots)..."
+        if python3 -m playwright install chromium &>/dev/null; then
+            log_ok "Playwright Chromium installed"
+        else
+            log_warn "Playwright Chromium install failed — run manually:"
+            log_warn "  python3 -m playwright install chromium"
+        fi
+    else
+        log_err "Failed to install subcat dependencies — run manually:"
+        log_err "  pip install -r tools/subcat/requirements.txt"
+    fi
+else
+    log_warn "tools/subcat not found — skipping"
+fi
+
 # Update nuclei templates
 echo ""
 echo "[*] Updating nuclei templates..."

@@ -1,5 +1,16 @@
 # Changelog
 
+## v4.3.0 — Mobile Scanning + Visual Triage (Sep 2026)
+
+### Added — Vendored Tools
+- `tools/apkleaks/` + `tools/mobile_scan.sh`: APK secret/endpoint scanner (vendored from [dwisiswant0/apkleaks](https://github.com/dwisiswant0/apkleaks)). Closes a real gap — the toolkit had zero mobile-app coverage even though many programs scope in an Android APK alongside the web target. `mobile_scan.sh <app.apk>` decompiles via jadx and writes findings to `recon/<target>/mobile/apkleaks.json`.
+- `tools/subcat/`: subdomain enum + Playwright screenshot/report tool (vendored from [duty1g/subcat](https://github.com/duty1g/subcat)). Wired into `recon_engine.sh` as a visual-triage pass — screenshots every host in `live/urls.txt` (full mode only, skipped on `--quick` or when Playwright isn't installed) so admin panels and staging environments buried in a long URL list are easy to spot. Browse results with `cd tools/subcat && python3 -m subcat report list`.
+
+### Changed
+- `install_tools.sh` now installs apkleaks' and subcat's Python dependencies, checks for a JVM (needed by jadx), and installs Playwright's Chromium build.
+
+---
+
 ## v4.2.0 — 403 Bypass + Real Dorking (Sep 2026)
 
 ### Added — Vendored Tools

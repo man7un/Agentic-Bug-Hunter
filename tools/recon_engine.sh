@@ -232,6 +232,22 @@ if [ -s "$RECON_DIR/live/status_403.txt" ] && [ -x "$UNKOVER_BIN" ]; then
     log_done "403 bypasses found: $BYPASS_COUNT (see $RECON_DIR/live/403_bypass.jsonl)"
 fi
 
+# ── Visual triage (subcat screenshots) ──────────────────────────────────────
+SUBCAT_DIR="$BASE_DIR/tools/subcat"
+if [ -s "$RECON_DIR/live/urls.txt" ] && [ "$QUICK_MODE" != "--quick" ] && python3 -c "import playwright" &>/dev/null; then
+    log_step "Capturing screenshots for visual triage (subcat)..."
+    HOSTS_FILE=$(mktemp)
+    sed -E 's#^[a-zA-Z]+://##; s#/.*##' "$RECON_DIR/live/urls.txt" | sort -u > "$HOSTS_FILE"
+    mkdir -p "$RECON_DIR/screenshots"
+    (cd "$SUBCAT_DIR" && python3 -m subcat passive -l "$HOSTS_FILE" -ss \
+        -of json -o "$RECON_DIR/screenshots/subcat_results.json" 2>/dev/null) || true
+    rm -f "$HOSTS_FILE"
+    log_done "Screenshots captured — browse with: (cd tools/subcat && python3 -m subcat report list)"
+else
+    [ "$QUICK_MODE" = "--quick" ] && log_warn "Skipping screenshot triage (quick mode)" \
+        || log_warn "Skipping screenshot triage (playwright not installed — see install_tools.sh)"
+fi
+
 # ============================================================
 # Phase 3: Port Scanning
 # ============================================================
