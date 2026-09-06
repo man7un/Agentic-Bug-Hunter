@@ -72,12 +72,14 @@ GO_TOOLS=(
     "github.com/lc/gau/v2/cmd/gau@latest"
     "github.com/hahwul/dalfox/v2@latest"
     "github.com/haccer/subjack@latest"
+    "github.com/projectdiscovery/interactsh/cmd/interactsh-client@latest"
 )
 
 GO_TOOL_NAMES=(
     "gau"
     "dalfox"
     "subjack"
+    "interactsh-client"
 )
 
 for i in "${!GO_TOOLS[@]}"; do
@@ -227,6 +229,21 @@ if [ -f "$SUBCAT_REQS" ]; then
 else
     log_warn "tools/subcat not found — skipping"
 fi
+
+# confirm_*.py — automated exploit confirmation harnesses
+echo ""
+echo "[*] Checking confirm_*.py harness dependencies..."
+if python3 -c "import playwright" &>/dev/null; then
+    log_ok "confirm_xss.py ready (playwright already installed for subcat)"
+else
+    log_warn "confirm_xss.py needs playwright — installed above with subcat's requirements.txt"
+fi
+if command -v interactsh-client &>/dev/null; then
+    log_ok "confirm_ssrf.py ready (interactsh-client installed above)"
+else
+    log_warn "confirm_ssrf.py needs interactsh-client — see the Go install step above"
+fi
+log_ok "confirm_idor.py and confirm_authbypass.py are stdlib-only, no install needed"
 
 # Update nuclei templates
 echo ""

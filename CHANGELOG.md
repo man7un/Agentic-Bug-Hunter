@@ -1,5 +1,26 @@
 # Changelog
 
+## v4.4.0 — Automated Exploit Confirmation (Sep 2026)
+
+### Added — Vendored/Adapted Tools
+- `tools/confirm_common.py`: shared `Proof` artifact contract (`CONFIRMED`/`POSSIBLE`/`UNCONFIRMED`) written by all four harnesses below and read back by `validate.py --proof`.
+- `tools/confirm_idor.py`: confirms cross-account IDOR by requiring a literal victim-specific marker in the attacker's response, absent from an optional control request against the attacker's own resource. Stdlib-only.
+- `tools/confirm_authbypass.py`: confirms an auth bypass by diffing an authenticated request, the same request with auth stripped, and (optionally) a genuine anonymous baseline — rules out "this page was just public anyway." Stdlib-only.
+- `tools/confirm_ssrf.py`: confirms blind SSRF via a real Interactsh out-of-band callback rather than timing/error-message inference. Wraps the `interactsh-client` Go binary. Needs `GOBIN=$HOME/go/bin go install github.com/projectdiscovery/interactsh/cmd/interactsh-client@latest`.
+- `tools/confirm_xss.py`: confirms DOM XSS by driving headless Chromium (Playwright) and requiring the payload's canary to actually fire (dialog/hook/console), not just reflect in the HTML. Adapted from the `dom_xss_harness.py` pattern in the AwareXone/BugHunter fork of this project (same MIT lineage) — same core idea, wired into this repo's proof/validate contract instead of standing alone.
+
+### Changed — Closes the self-attestation gap
+- `tools/validate.py`: `--proof <path>` reads a harness's `proof.json` and answers Gates 1 and 3 from its mechanical verdict instead of `input()` yes/no prompts. A `POSSIBLE`/`UNCONFIRMED` verdict auto-fails the gate and cannot be overridden by hand — matches the actual design intent of the 7-Question Gate (proof, not narrative).
+- `agents/validator.md`: Q1 and Q6 now require a `proof.json` (`CONFIRMED`) for IDOR/SSRF/auth-bypass/XSS findings before self-attesting; other vuln classes still self-attest but the validator's output must say so explicitly.
+- `agents/autopilot.md` / `commands/autopilot.md`: the HUNT step now runs the matching `confirm_*.py` harness on any IDOR/SSRF/auth-bypass/XSS signal before treating it as a finding. Added a bounded **Hunt Budget** (default 200 requests / 90 min per target) so "keep hunting until something is proven" has an explicit stop condition instead of running indefinitely against a live target — checkpoints fire early on a `CONFIRMED` finding, or when the budget runs out, whichever comes first.
+- `install_tools.sh`: installs `interactsh-client` via `go install`; confirms Playwright (already installed for `subcat`) covers `confirm_xss.py` too.
+
+### Explicitly unchanged
+- Report submission is still always human-gated, in every autopilot mode, regardless of confirmation status — this release makes the *evidence* going into that decision harder to fake, it does not remove the decision.
+- Scope checking and rate limits are untouched — the hunt budget bounds persistence, it does not authorize testing outside scope or ignoring circuit breakers.
+
+---
+
 ## v4.3.0 — Mobile Scanning + Visual Triage (Sep 2026)
 
 ### Added — Vendored Tools

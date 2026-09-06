@@ -17,6 +17,7 @@ Run full validation on the current finding before writing a report.
 
 ```
 /validate
+/validate --proof findings/target-idor/proof.json
 ```
 
 Describe the finding when prompted. Include:
@@ -24,6 +25,26 @@ Describe the finding when prompted. Include:
 - The bug class
 - What the PoC shows
 - The target program
+
+**If the finding is IDOR, SSRF, auth bypass, or DOM XSS**, run the matching harness
+first and pass its output here instead of self-reporting:
+
+```
+tools/confirm_idor.py <url> --attacker-header "Authorization: Bearer ..." \
+    --victim-marker "victim@example.com" --proof findings/target-idor/proof.json
+tools/confirm_ssrf.py "https://target/fetch?url=http://{OOB}/x" --proof findings/target-ssrf/proof.json
+tools/confirm_authbypass.py <url> --auth-header "Authorization: Bearer ..." \
+    --authed-marker '"account_id"' --proof findings/target-auth/proof.json
+tools/confirm_xss.py "<url>?q=test" --proof findings/target-xss/proof.json
+
+tools/validate.py --proof findings/target-idor/proof.json
+```
+
+With `--proof`, Gates 1 and 3 are answered from the harness's mechanical verdict
+(`CONFIRMED`/`POSSIBLE`/`UNCONFIRMED`) instead of a yes/no self-report — and a
+`POSSIBLE` or `UNCONFIRMED` verdict fails the gate; it cannot be talked past.
+No harness exists yet for other vuln classes — those still go through the
+self-attested questions below, and the report should say so explicitly.
 
 ## The 7-Question Gate
 

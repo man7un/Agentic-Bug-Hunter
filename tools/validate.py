@@ -18,6 +18,8 @@ import urllib.request
 import urllib.error
 from datetime import datetime
 
+from confirm_common import read_proof, CONFIRMED as PROOF_CONFIRMED
+
 # macOS: Python may not have system SSL certs. Use unverified context for API queries.
 _SSL_CTX = ssl.create_default_context()
 try:
@@ -223,8 +225,27 @@ def gate_header(n: int, name: str, status: str | None = None):
 
 # ─── Gate implementations ─────────────────────────────────────────────────────
 
-def gate1_is_real() -> tuple[bool, dict]:
+def gate1_is_real(proof=None) -> tuple[bool, dict]:
     gate_header(1, "Is It Real?")
+
+    if proof is not None:
+        print(f"  Automated confirmation harness: {CYAN}{proof.tool}{RESET} → {proof.verdict}")
+        reason = proof.evidence.get("reason", "")
+        if reason:
+            print(f"  {DIM}{reason}{RESET}")
+        passed = proof.verdict == PROOF_CONFIRMED
+        notes = {"auto_confirmed_by": proof.tool, "proof_verdict": proof.verdict, "evidence": proof.evidence}
+        if passed:
+            print(f"\n  {GREEN}GATE 1 PASS (automated — not self-reported){RESET}")
+        else:
+            print(f"\n  {RED}GATE 1 FAIL: confirmation harness did not reproduce real impact ({proof.verdict}).{RESET}")
+            print(f"  {DIM}Do not override this by hand — fix the finding or the harness inputs, then re-run it.{RESET}")
+        return passed, notes
+
+    print(f"  {YELLOW}No --proof supplied — no confirm_*.py harness result for this finding.{RESET}")
+    print(f"  {DIM}If this is IDOR, SSRF, auth-bypass, or XSS, run the matching tools/confirm_*.py first —")
+    print(f"  {DIM}it's a mechanical re-check, not a self-report. Falling back to manual attestation below.{RESET}")
+    print()
     print("  Can you reproduce the bug from scratch — clean browser, no Burp artifacts?")
     print()
     repro3   = ask_yn("Reproduced 3/3 times deterministically?")
@@ -238,13 +259,14 @@ def gate1_is_real() -> tuple[bool, dict]:
         "works_without_proxy": no_burp,
         "no_special_state": no_state,
         "not_documented_behavior": rtfm,
+        "auto_confirmed_by": None,
     }
 
     if not passed:
         print(f"\n  {RED}GATE 1 FAIL: Not reliably reproducible.{RESET}")
         print(f"  {DIM}Do not submit yet. Verify the bug is deterministic first.{RESET}")
     else:
-        print(f"\n  {GREEN}GATE 1 PASS{RESET}")
+        print(f"\n  {GREEN}GATE 1 PASS (self-reported){RESET}")
 
     return passed, notes
 
@@ -297,18 +319,25 @@ def gate2_in_scope(program_handle: str) -> tuple[bool, dict]:
     return passed, notes
 
 
-def gate3_exploitable() -> tuple[bool, dict]:
+def gate3_exploitable(proof=None) -> tuple[bool, dict]:
     gate_header(3, "Is It Exploitable?")
     print("  Can you demonstrate concrete impact without unrealistic preconditions?")
     print()
 
-    concrete_impact  = ask_yn("Can you show concrete impact (not just 'theoretically an attacker could')?")
-    no_unrealistic   = ask_yn("No unrealistic preconditions (not 'must be admin already', not 'victim must run JS')?")
-    can_demonstrate  = ask_yn("Have proof you can show a triager (screenshot, curl, PoC)?")
+    if proof is not None and proof.verdict == PROOF_CONFIRMED:
+        print(f"  {GREEN}Concrete impact + proof are already established by {proof.tool} (CONFIRMED).{RESET}")
+        concrete_impact = True
+        can_demonstrate = True
+    else:
+        concrete_impact  = ask_yn("Can you show concrete impact (not just 'theoretically an attacker could')?")
+        can_demonstrate  = ask_yn("Have proof you can show a triager (screenshot, curl, PoC)?")
+
+    no_unrealistic = ask_yn("No unrealistic preconditions (not 'must be admin already', not 'victim must run JS')?")
 
     print()
     print("  What is the concrete impact? (be specific)")
-    impact_desc = ask("Describe the impact")
+    default_desc = proof.evidence.get("reason", "") if proof is not None else ""
+    impact_desc = ask("Describe the impact", default_desc)
 
     passed = concrete_impact and no_unrealistic and can_demonstrate
     notes = {
@@ -316,6 +345,7 @@ def gate3_exploitable() -> tuple[bool, dict]:
         "no_unrealistic_preconditions": no_unrealistic,
         "has_proof": can_demonstrate,
         "impact_description": impact_desc,
+        "auto_confirmed_by": proof.tool if proof is not None else None,
     }
 
     if not passed:
@@ -567,7 +597,15 @@ def main():
     parser = argparse.ArgumentParser(description="Interactive bug validation assistant")
     parser.add_argument("--output",  default="", help="Output path for generated report skeleton")
     parser.add_argument("--program", default="", help="HackerOne program handle for dup check")
+    parser.add_argument("--proof", default="",
+                         help="path to a proof.json written by tools/confirm_idor.py, confirm_ssrf.py, "
+                              "confirm_authbypass.py, or confirm_xss.py — when given, Gates 1 and 3 are "
+                              "answered from that automated result instead of self-reported yes/no")
     args = parser.parse_args()
+
+    proof = read_proof(args.proof) if args.proof else None
+    if args.proof and proof is None:
+        print(f"{YELLOW}[!] Could not read proof file at {args.proof} — falling back to manual attestation.{RESET}")
 
     print(f"\n{BOLD}{CYAN}{'═' * 60}{RESET}")
     print(f"{BOLD}{CYAN}  Bug Bounty Validation Assistant{RESET}")
@@ -582,9 +620,9 @@ def main():
     endpoint       = ask("Affected endpoint (e.g., '/api/invoices/:id')")
 
     # Run the 4 gates
-    g1_pass, g1_notes = gate1_is_real()
+    g1_pass, g1_notes = gate1_is_real(proof)
     g2_pass, g2_notes = gate2_in_scope(target_program)
-    g3_pass, g3_notes = gate3_exploitable()
+    g3_pass, g3_notes = gate3_exploitable(proof)
     g4_pass, g4_notes = gate4_not_dup(vuln_type, endpoint, target_program)
 
     # Summary

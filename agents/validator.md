@@ -18,13 +18,40 @@ For every finding, output exactly one of:
 - **DOWNGRADE** — Valid bug, but severity overclaimed. Specific change needed.
 - **CHAIN REQUIRED** — Valid on the never-submit list but can be chained. Specific chain needed.
 
+## Automated Confirmation Harnesses (use these before self-attesting)
+
+For four vuln classes, don't take the researcher's (or your own) word for "I saw it work" —
+`tools/confirm_*.py` independently re-fires the request and applies a mechanical pass/fail
+check, writing a `proof.json` artifact:
+
+| Vuln class | Harness | What it mechanically checks |
+|---|---|---|
+| IDOR | `tools/confirm_idor.py` | victim-specific marker literally present in attacker's response, absent from attacker's own control resource |
+| SSRF (blind) | `tools/confirm_ssrf.py` | a real Interactsh OOB callback was received — proves the target itself reached attacker infra |
+| Auth bypass | `tools/confirm_authbypass.py` | stripped-auth request matches the authenticated response AND differs from a genuine anonymous baseline |
+| DOM XSS | `tools/confirm_xss.py` | payload canary actually fired in a real headless browser (dialog/hook/console), not just reflected in HTML |
+
+**If the finding is one of these four classes, run the matching harness before triaging it.**
+Pass its `proof.json` to `tools/validate.py --proof <path>` — Gates 1 and 3 will be answered
+from that artifact instead of self-report. A harness verdict of `CONFIRMED` auto-passes those
+gates; `POSSIBLE` or `UNCONFIRMED` auto-fails them, and **you may not override that by hand** —
+if you believe the harness is wrong, fix the harness inputs (better marker, correct auth header,
+longer OOB wait) and re-run it, don't talk yourself past a failed mechanical check.
+
+For any other vuln class with no harness yet, fall back to the self-attested 7-Question Gate
+below — but say so explicitly in your DECISION output ("no automated harness for this class,
+self-reported evidence only") so a human reviewer knows this finding has weaker proof than one
+backed by a `proof.json`.
+
 ## The 7-Question Gate
 
 Apply in order. First NO = KILL immediately.
 
 **Q1: Can attacker do this RIGHT NOW with a real HTTP request?**
-- YES: "Researcher has exact request/response"
+- YES + harness available: "`proof.json` verdict is CONFIRMED" (attach the path)
+- YES, no harness for this class: "Researcher has exact request/response"
 - NO: "Researcher only read code, no confirmed PoC" → KILL Q1
+- NO, harness ran and returned POSSIBLE/UNCONFIRMED: → KILL Q1 (do not accept a narrative override)
 
 **Q2: Is this impact type accepted by the program?**
 - YES: "Bug class is on accepted list"
@@ -43,9 +70,10 @@ Apply in order. First NO = KILL immediately.
 - NO: "Documented behavior" → KILL Q5
 
 **Q6: Can impact be proved beyond 'technically possible'?**
-- YES: "Researcher has actual other-user data in response"
-- PARTIAL: "Has 200 OK but not actual victim data" → DOWNGRADE (not kill)
-- NO: "DNS callback only, no data" → severity reduction
+- YES + harness available: "`proof.json` verdict is CONFIRMED" (this is what a harness exists for)
+- YES, no harness for this class: "Researcher has actual other-user data in response"
+- PARTIAL: "Has 200 OK but not actual victim data" or harness verdict is POSSIBLE → DOWNGRADE (not kill)
+- NO: "DNS callback only, no data" or harness verdict is UNCONFIRMED → severity reduction
 
 **Q7: Is this not on the never-submit list?**
 - YES: "Bug class is valid for standalone submission"

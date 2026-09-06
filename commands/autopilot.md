@@ -53,11 +53,24 @@ Runs the full hunt cycle without stopping for approval at each step:
 1. SCOPE     Load and confirm program scope
 2. RECON     Run recon (or use cached if < 7 days old)
 3. RANK      Prioritize attack surface (recon-ranker agent)
-4. HUNT      Test P1 endpoints systematically
-5. VALIDATE  7-Question Gate on findings
+4. HUNT      Test P1 endpoints systematically; run tools/confirm_*.py on any
+             IDOR/SSRF/auth-bypass/XSS signal before treating it as a finding
+5. VALIDATE  7-Question Gate — Gates 1/3 read the confirm_*.py proof.json when one
+             exists, instead of self-report
 6. REPORT    Draft reports for validated findings
-7. CHECKPOINT  Present to human for review
+7. CHECKPOINT  Present to human for review — fires early on a CONFIRMED finding,
+             or when the hunt budget (default 200 requests / 90 min) runs out
 ```
+
+## Automated Exploit Confirmation
+
+Four vuln classes get an independent, mechanical re-check instead of relying on
+Claude's own account of what it saw — see `tools/confirm_idor.py`,
+`tools/confirm_ssrf.py`, `tools/confirm_authbypass.py`, `tools/confirm_xss.py`.
+Each writes a `proof.json` with a verdict of `CONFIRMED`, `POSSIBLE`, or
+`UNCONFIRMED`; `/validate --proof <path>` reads it and will not let a `POSSIBLE`
+or `UNCONFIRMED` verdict be talked past. Findings outside these four classes still
+go through the standard self-attested 7-Question Gate — the report will say so.
 
 ## Safety Guarantees
 

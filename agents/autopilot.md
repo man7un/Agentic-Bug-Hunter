@@ -45,28 +45,33 @@ Continue? [y/n/details]
 ```
 
 ### `--normal`
-Stop after VALIDATE step. Shows batch of all findings from this cycle.
+Stop after VALIDATE step. Shows batch of all findings from this cycle, tagged by proof strength.
 ```
 CYCLE COMPLETE — 3 findings validated:
-1. [HIGH] IDOR on /api/v2/users/{id}/orders — confirmed read+write
-2. [MEDIUM] Open redirect on /auth/callback — chain candidate
+1. [HIGH] IDOR on /api/v2/users/{id}/orders — proof.json CONFIRMED (confirm_idor.py)
+2. [MEDIUM] Open redirect on /auth/callback — chain candidate (no harness, self-attested)
 3. [LOW] Verbose error on /api/debug — info disclosure
 
 Actions: [c]ontinue hunting | [r]eport all | [s]top | [d]etails on #N
 ```
 
 ### `--yolo` (experienced hunters on familiar targets)
-Stop only after full surface is exhausted. Still requires approval for:
+Stop when EITHER a finding reaches CONFIRMED, or the hunt budget is exhausted, whichever
+comes first — not just "surface exhausted." Still requires approval for:
 - Report submissions (always)
 - PUT/DELETE/PATCH requests (safe_methods_only)
 - Testing new hosts not in the ranked surface
+- Extending the hunt budget past its default
 
 ```
-SURFACE EXHAUSTED — 47 endpoints tested, 2 findings validated.
-1. [HIGH] IDOR on /api/v2/users/{id}/orders
-2. [MEDIUM] Rate limit bypass on /api/auth/login
+CONFIRMED — IDOR on /api/v2/users/{id}/orders (proof.json via confirm_idor.py, 34/200 requests used)
 
-Actions: [r]eport | [e]xpand surface | [s]top
+Actions: [r]eport | [k]eep hunting for more | [s]top
+```
+or, if the budget runs out first:
+```
+BUDGET EXHAUSTED — 200/200 requests, 47 endpoints tested, 0 findings CONFIRMED, 2 candidates unconfirmed.
+Actions: [e]xtend budget | [r]eport candidates as self-attested | [s]top
 ```
 
 ## Step 1: Scope Loading
@@ -118,16 +123,43 @@ For each P1 target endpoint:
 2. Select vuln class based on tech stack + URL pattern + memory
 3. Test with appropriate technique
 4. Log every request to audit.jsonl
-5. If signal found → check chain table (A→B)
-6. If 5 minutes with no progress → rotate to next endpoint
+5. **If signal found for IDOR, SSRF, auth bypass, or DOM XSS → immediately run the matching
+   `tools/confirm_*.py` harness before calling it a finding.** A "signal" (a 200 where you
+   expected 403, a payload that got reflected, a slow response) is not a finding yet — it's
+   a candidate. Only promote it to something VALIDATE sees once the harness has produced a
+   `proof.json`, whatever its verdict. This is what actually confirms "real exploitation,"
+   not the fact that something looked interesting.
+6. If signal found for another vuln class with no harness yet → check chain table (A→B),
+   proceed to VALIDATE with self-attested evidence, and say so explicitly (weaker proof).
+7. If 5 minutes with no progress → rotate to next endpoint
 
 ## Step 5: Validate
 
-For each finding, run the 7-Question Gate:
-- Q1: Can attacker do this RIGHT NOW? (must have exact request/response)
-- Q2-Q7: Standard validation gates
+For each candidate finding, run `tools/validate.py`:
+- If a `proof.json` exists for it, pass `--proof <path>` — Gates 1 and 3 are answered from
+  that mechanical result, not self-report. A `POSSIBLE`/`UNCONFIRMED` verdict auto-fails the
+  gate — do not talk yourself past it; either the harness inputs need fixing (better marker,
+  correct token, longer OOB wait) or the candidate is genuinely not exploitable. Re-run the
+  harness, don't override its result by hand.
+- If no harness exists for the vuln class, fall through to the standard 7-Question Gate.
 
 KILL weak findings immediately. Don't accumulate noise.
+
+## Hunt Budget (bounded persistence, not unlimited hammering)
+
+"Keep hunting until something is CONFIRMED" is the goal, but it is bounded, not infinite —
+an unbounded loop against a live target is indistinguishable from abusive scanning and
+violates most programs' rules regardless of intent. Before starting a session, establish a
+budget (default: 200 requests or 90 minutes, whichever comes first, per target) covering
+recon + hunt + confirmation combined. Within that budget:
+
+1. Work P1 → P2 → re-recon for newly-surfaced assets → retry unexercised vuln classes
+   against endpoints already tested for a different class.
+2. Stop rotating and checkpoint the moment any candidate reaches a `CONFIRMED` proof.json —
+   don't keep burning budget once the goal (a real, working exploit) is met.
+3. If the budget runs out with nothing CONFIRMED, checkpoint anyway: "Budget exhausted,
+   N candidates found, 0 confirmed. Extend budget / stop / report partial signals as-is?"
+   Never silently keep running past the budget without asking.
 
 ## Step 6: Report
 
@@ -177,9 +209,9 @@ Target:     target.com
 Duration:   47 minutes
 Mode:       --normal
 
-Requests:   142 total (142 in-scope, 0 blocked)
+Requests:   142 total (142 in-scope, 0 blocked) — budget: 142/200
 Endpoints:  23 tested, 14 remaining
-Findings:   2 validated, 1 killed, 3 partial
+Findings:   2 validated (1 CONFIRMED via proof.json, 1 self-attested), 1 killed, 3 partial
 
 Next:       14 untested endpoints — run /pickup target.com to continue
 ```
