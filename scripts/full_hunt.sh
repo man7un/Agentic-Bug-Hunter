@@ -313,6 +313,22 @@ if [ -f "$(dirname $0)/dork_runner.py" ]; then
     ok "Dork report → $OUT/reports/dork_report.html"
 fi
 
+# ── Run dorks for real (SimpleReconDorking) ────────────────────────────────────
+SRD="$TOOLS_DIR/tools/simplerecondorking/simplerecondorking.py"
+if [ -f "$SRD" ] && python3 -c "import httpx" &>/dev/null; then
+    log "Running dorks across live search engines (SimpleReconDorking)..."
+    python3 "$SRD" \
+        --dork-category api,backup,cloud,config,docs,errors,files,git_exposure,panels,remote_access \
+        -t "$TARGET" \
+        --profile fast \
+        -o markdown --outfile "$OUT/reports/dork_findings.md" \
+        --db "$OUT/reports/dorking.db" \
+        2>/dev/null && ok "Dork findings → $OUT/reports/dork_findings.md" \
+        || warn "SimpleReconDorking run failed — check search engines aren't rate-limiting you"
+else
+    warn "SimpleReconDorking skipped (needs: pip install -r tools/simplerecondorking/requirements.txt)"
+fi
+
 fi  # end scan check
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -345,8 +361,9 @@ echo ""
 echo ""
 echo -e "${BOLD}  Next steps:${RESET}"
 echo -e "  1. Check $OUT/vulns/ for automated findings"
-echo -e "  2. Open $OUT/reports/dork_report.html for Google dorking"
-echo -e "  3. Manually test: $OUT/vulns/gf_*.txt (IDOR, SSRF, SQLi)"
+echo -e "  2. Check $OUT/reports/dork_findings.md for exposed files/panels/secrets"
+echo -e "  3. Open $OUT/reports/dork_report.html for manual Google dorking"
+echo -e "  4. Manually test: $OUT/vulns/gf_*.txt (IDOR, SSRF, SQLi)"
 echo -e "  4. Analyze JS: $OUT/js/js_endpoints.txt"
 echo -e "  5. Test JWT attacks if auth endpoints found"
 sep

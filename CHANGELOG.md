@@ -1,5 +1,17 @@
 # Changelog
 
+## v4.2.0 — 403 Bypass + Real Dorking (Sep 2026)
+
+### Added — Vendored Tools
+- `tools/unkover/`: 403 bypass tester (vendored from [BRuteLogic/unKover](https://github.com/BRuteLogic/unKover)). Wired into `recon_engine.sh` — automatically tests every URL in `status_403.txt` (IP-spoofing, method tampering, path normalization, encoding, version-prefix bypasses) and writes results to `recon/<target>/live/403_bypass.jsonl`.
+- `tools/simplerecondorking/`: multi-engine dorking tool (vendored from [osintbrazuca/SimpleReconDorking](https://github.com/osintbrazuca/SimpleReconDorking)). Replaces the click-through-Google-links workflow of `dork_runner.py` with actual automated queries across 30+ search engines, SQLite-backed dedup, and Markdown/JSON/HTML output. Wired into `scripts/full_hunt.sh`; needs `pip install -r tools/simplerecondorking/requirements.txt`.
+
+### Changed
+- `install_tools.sh` now installs SimpleReconDorking's `httpx[socks]` dependency and verifies `unkover` is executable.
+- `.gitignore` excludes `tools/simplerecondorking/config/api_keys.json` and its runtime `system.db*` files.
+
+---
+
 ## v4.1.0 — Patch: Bug Fixes + Assets (Apr 2026)
 
 ### Fixed

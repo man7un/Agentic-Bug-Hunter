@@ -66,6 +66,8 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 - `tools/scope_checker.py` — deterministic scope safety checker
 - `tools/cicd_scanner.sh` — GitHub Actions workflow scanner (sisakulint wrapper, remote scan)
 - `tools/token_scanner.py` — automated token red flag scanner (EVM + Solana)
+- `tools/unkover/unkover` — 403 bypass tester (vendored from [BRuteLogic/unKover](https://github.com/BRuteLogic/unKover)); auto-run by `recon_engine.sh` against every `status_403.txt` hit
+- `tools/simplerecondorking/` — multi-engine dorking tool (vendored from [osintbrazuca/SimpleReconDorking](https://github.com/osintbrazuca/SimpleReconDorking)); run by `scripts/full_hunt.sh`, needs `pip install -r tools/simplerecondorking/requirements.txt`
 
 ### MCP Integrations (in `mcp/`)
 

@@ -216,6 +216,22 @@ else
     log_warn "httpx not installed or no subdomains found — skipping"
 fi
 
+# ── 403 bypass testing (unKover) ───────────────────────────────────────────
+UNKOVER_BIN="$BASE_DIR/tools/unkover/unkover"
+if [ -s "$RECON_DIR/live/status_403.txt" ] && [ -x "$UNKOVER_BIN" ]; then
+    log_step "Testing 403 bypasses with unKover..."
+    : > "$RECON_DIR/live/403_bypass.jsonl"
+    BYPASS_COUNT=0
+    while IFS= read -r url; do
+        RESULT=$(bash "$UNKOVER_BIN" "$url" -j 2>/dev/null || true)
+        [ -n "$RESULT" ] && echo "$RESULT" >> "$RECON_DIR/live/403_bypass.jsonl"
+        if echo "$RESULT" | grep -q '"bypass":true'; then
+            BYPASS_COUNT=$((BYPASS_COUNT + 1))
+        fi
+    done < <(awk '{print $1}' "$RECON_DIR/live/status_403.txt" | head -25)
+    log_done "403 bypasses found: $BYPASS_COUNT (see $RECON_DIR/live/403_bypass.jsonl)"
+fi
+
 # ============================================================
 # Phase 3: Port Scanning
 # ============================================================

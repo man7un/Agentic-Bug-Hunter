@@ -11,6 +11,8 @@ config.json
 .env
 secrets.txt
 api_keys.txt
+tools/simplerecondorking/config/api_keys.json
+tools/simplerecondorking/config/system.db*
 
 # Python
 __pycache__/

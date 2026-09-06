@@ -161,6 +161,31 @@ else
     log_warn "cicd_scanner skipped (use --with-cicd-scanner to install)"
 fi
 
+# SimpleReconDorking — vendored multi-engine dorking tool (needs httpx[socks])
+echo ""
+echo "[*] Installing SimpleReconDorking dependencies..."
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SRD_REQS="$SCRIPT_DIR/tools/simplerecondorking/requirements.txt"
+if [ -f "$SRD_REQS" ]; then
+    if python3 -m pip install -q -r "$SRD_REQS"; then
+        log_ok "SimpleReconDorking dependencies installed"
+    else
+        log_err "Failed to install SimpleReconDorking dependencies — run manually:"
+        log_err "  pip install -r tools/simplerecondorking/requirements.txt"
+    fi
+else
+    log_warn "tools/simplerecondorking not found — skipping"
+fi
+
+# unKover — 403 bypass tester (bash + curl only, no install needed)
+if [ -x "$SCRIPT_DIR/tools/unkover/unkover" ]; then
+    log_ok "unKover ready (tools/unkover/unkover, curl-only)"
+else
+    chmod +x "$SCRIPT_DIR/tools/unkover/unkover" 2>/dev/null && \
+        log_ok "unKover ready (tools/unkover/unkover, curl-only)" || \
+        log_warn "tools/unkover/unkover not found — skipping"
+fi
+
 # Update nuclei templates
 echo ""
 echo "[*] Updating nuclei templates..."
