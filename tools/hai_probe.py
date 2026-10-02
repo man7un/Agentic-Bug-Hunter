@@ -8,7 +8,6 @@ import argparse
 import requests
 import json
 import time
-import sys
 
 BASE_URL = "https://api.hackerone.com/v1"
 

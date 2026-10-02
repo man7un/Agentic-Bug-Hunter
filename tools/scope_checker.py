@@ -10,7 +10,6 @@ Known limitation: IP addresses and CIDR ranges are NOT supported (returns False 
 """
 
 import sys
-from fnmatch import fnmatch
 from urllib.parse import urlparse
 
 

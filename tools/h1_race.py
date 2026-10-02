@@ -14,7 +14,6 @@ import argparse
 import json
 import threading
 import time
-from typing import Optional
 import urllib.request
 import urllib.error
 

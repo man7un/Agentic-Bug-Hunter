@@ -1,6 +1,5 @@
 """Tests for SafeMethodPolicy — enforces safe HTTP methods in autopilot mode."""
 
-import pytest
 
 from memory.audit_log import SafeMethodPolicy
 

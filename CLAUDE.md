@@ -18,7 +18,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `skills/report-writing/` | H1/Bugcrowd/Intigriti/Immunefi report templates, CVSS 3.1, human tone |
 | `skills/triage-validation/` | 7-Question Gate, 4 gates, never-submit list, conditionally valid table |
 
-### Commands (14 slash commands)
+### Commands (15 slash commands)
 
 > **Note:** All commands are prefixed to avoid conflicts with Claude Code's built-in commands.
 > `/resume` is a reserved Claude Code command — use `/pickup` to continue a previous hunt.
@@ -38,6 +38,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `/pickup` | `/pickup target.com` — pick up previous hunt (was `/resume`) |
 | `/remember` | `/remember` — log finding to hunt memory |
 | `/intel` | `/intel target.com` — fetch CVE + disclosure intel |
+| `/hunt-new` | `/hunt-new <handle>` — approval gate for a newly detected program: reads/builds its dossier, shows scope + ranked surface, then on explicit approval launches a bounded `/autopilot` |
 | `/token-scan` | `/token-scan <contract>` — meme coin/token rug pull scanner |
 
 ### Agents (8 specialized agents)
@@ -66,6 +67,8 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 - `tools/scope_checker.py` — deterministic scope safety checker
 - `tools/cicd_scanner.sh` — GitHub Actions workflow scanner (sisakulint wrapper, remote scan)
 - `tools/token_scanner.py` — automated token red flag scanner (EVM + Solana)
+- `tools/program_watch.py` — new-program watcher (**multi-source**). Polls each platform's **public** program directory and diffs against a local snapshot (`memory/program_watch_state.json`, gitignored), keyed `<source>:<id>`, to surface newly launched/public programs — the first-72h window where competition is thinnest. Sources: `h1` (HackerOne public GraphQL directory) and `ywh` (YesWeHack public API, `api.yeswehack.com/programs`); pick with `--sources h1,ywh` (default both). A newly added source is baselined silently (no catalogue flood); a source that fails a poll carries over its prior entries rather than dropping them. `--seed` sets the baseline, `--keywords a,b` filters by handle/name, `--bounties-only` skips VDPs, `--json` for machine output, `--notify` fires a clickable desktop popup (Open → browser) per hit, `--dossier` auto-builds a hunt dossier (below, **HackerOne only**) per new H1 program. Stdlib-only; run on a schedule (e.g. a 6h cron). Does **not** scrape bbradar.io (anti-bot token+CSRF gate) or Intigriti (no public program feed — a disabled `fetch_intigriti` stub documents how to wire it with a researcher-API token).
+- `tools/program_dossier.py <handle> [--source h1|ywh]` — builds a **passive** hunt dossier for a program on either platform: pulls its structured scope (HackerOne public GraphQL, or YesWeHack program API), ranks the in-scope attack surface by likely bug/bounty density (asset type + bounty-eligibility + identifier signals like `api`/`admin`/`auth`, plus YesWeHack's published per-asset criticality), suggests first-pass vuln classes, and writes Markdown to `findings/dossiers/<handle>-<date>.md`. Fires **no** active traffic — the ranked list is a *seed* for the human-approved `/recon` + `/autopilot` step. `--json` / `--stdout` variants. Stdlib-only. Intel section is platform-specific: H1 pulls disclosed reports (Hacker API), YWH surfaces reward range + qualifying-vuln list + out-of-scope notes.
 - `tools/unkover/unkover` — 403 bypass tester (vendored from [BRuteLogic/unKover](https://github.com/BRuteLogic/unKover)); auto-run by `recon_engine.sh` against every `status_403.txt` hit
 - `tools/simplerecondorking/` — multi-engine dorking tool (vendored from [osintbrazuca/SimpleReconDorking](https://github.com/osintbrazuca/SimpleReconDorking)); run by `scripts/full_hunt.sh`, needs `pip install -r tools/simplerecondorking/requirements.txt`
 - `tools/mobile_scan.sh <app.apk>` — wraps `tools/apkleaks/` (vendored from [dwisiswant0/apkleaks](https://github.com/dwisiswant0/apkleaks)) to pull hardcoded secrets/endpoints out of an Android APK; needs a JRE (for the jadx decompiler) and `pip install -r tools/apkleaks/requirements.txt`

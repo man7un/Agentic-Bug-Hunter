@@ -25,7 +25,6 @@ import sys
 import urllib.request
 import urllib.error
 import urllib.parse
-from datetime import datetime, timezone
 
 
 # ─── SSL context ─────────────────────────────────────────────────────────────
@@ -38,6 +37,10 @@ except ImportError:
     _SSL_CTX.verify_mode = ssl.CERT_NONE
 
 H1_GRAPHQL = "https://hackerone.com/graphql"
+# HackerOne deprecated the public hacktivity GraphQL (hacktivity_items) in 2026;
+# disclosed-report search now goes through the Hacker API, which serves the
+# hacktivity feed unauthenticated as JSON:API.
+H1_HACKTIVITY_API = "https://api.hackerone.com/v1/hackers/hacktivity"
 DEFAULT_TIMEOUT = 15
 
 
@@ -82,12 +85,47 @@ def _graphql_request(query: str, timeout: int = DEFAULT_TIMEOUT) -> dict:
 
 # ─── Tool: search_disclosed_reports ──────────────────────────────────────────
 
+def _hacktivity_api_get(query_string: str, limit: int,
+                        sort: str = "-latest_disclosable_activity_at",
+                        timeout: int = DEFAULT_TIMEOUT) -> dict:
+    """GET the Hacker API hacktivity feed (JSON:API). Public, no auth."""
+    params = urllib.parse.urlencode({
+        "queryString": query_string,
+        "page[size]": limit,
+        "sort": sort,
+    })
+    url = f"{H1_HACKTIVITY_API}?{params}"
+    req = urllib.request.Request(
+        url,
+        headers={"Accept": "application/json", "User-Agent": "claude-bug-bounty/2.1"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CTX) as resp:
+            return json.loads(resp.read().decode("utf-8", errors="replace"))
+    except urllib.error.HTTPError as e:
+        raise HackerOneAPIError(f"HTTP {e.code}: {e.reason}", status_code=e.code)
+    except urllib.error.URLError as e:
+        raise HackerOneAPIError(f"Network error: {e.reason}")
+    except json.JSONDecodeError as e:
+        raise HackerOneAPIError(f"Invalid JSON response: {e}")
+
+
+def _norm_severity(value) -> str:
+    """HackerOne returns severity as a word, the string 'None', or null."""
+    if not value or str(value).lower() == "none":
+        return "UNKNOWN"
+    return str(value).upper()
+
+
 def search_disclosed_reports(
     keyword: str = "",
     program: str = "",
     limit: int = 10,
 ) -> list[dict]:
     """Search HackerOne Hacktivity for disclosed reports.
+
+    Uses the Hacker API hacktivity feed (the public GraphQL hacktivity_items
+    query was deprecated by HackerOne in 2026). Return shape is unchanged.
 
     Args:
         keyword: Search term (vuln type, tech, etc.)
@@ -99,61 +137,34 @@ def search_disclosed_reports(
     """
     limit = max(1, min(25, limit))
 
-    where_clauses = ['disclosed_at: { _is_null: false }']
+    # Hacktivity query language: `disclosed:true`, `team_handle:<handle>`,
+    # and free text. Keyword is quoted so spaces / reserved chars don't break
+    # the query; the handle charset is safe unquoted.
+    clauses = ["disclosed:true"]
     if keyword:
-        safe_keyword = keyword.replace('"', '\\"')
-        where_clauses.append(
-            f'report: {{ title: {{ _icontains: "{safe_keyword}" }} }}'
-        )
+        clauses.append('"%s"' % keyword.replace('"', ""))
     if program:
-        safe_program = program.replace('"', '\\"')
-        where_clauses.append(
-            f'team: {{ handle: {{ _eq: "{safe_program}" }} }}'
-        )
+        clauses.append("team_handle:%s" % program.replace('"', ""))
+    query_string = " AND ".join(clauses)
 
-    where = ", ".join(where_clauses)
-
-    query = f"""{{
-      hacktivity_items(
-        first: {limit},
-        order_by: {{ field: popular, direction: DESC }},
-        where: {{ {where} }}
-      ) {{
-        nodes {{
-          ... on HacktivityDocument {{
-            report {{
-              title
-              severity_rating
-              disclosed_at
-              url
-              substate
-            }}
-            team {{
-              handle
-              name
-            }}
-          }}
-        }}
-      }}
-    }}"""
-
-    data = _graphql_request(query)
-    nodes = (data.get("data") or {}).get("hacktivity_items", {}).get("nodes", [])
+    data = _hacktivity_api_get(query_string, limit)
+    items = data.get("data") or []
 
     results = []
-    for node in nodes:
-        report = node.get("report")
-        if not report:
-            continue
-        team = node.get("team") or {}
+    for item in items:
+        attrs = item.get("attributes") or {}
+        if not attrs.get("disclosed_at"):
+            continue  # defensive: skip anything not actually disclosed
+        prog = (((item.get("relationships") or {}).get("program") or {})
+                .get("data") or {}).get("attributes") or {}
         results.append({
-            "title": report.get("title", ""),
-            "severity": (report.get("severity_rating") or "unknown").upper(),
-            "disclosed_at": (report.get("disclosed_at") or "")[:10],
-            "url": report.get("url", ""),
-            "state": report.get("substate", ""),
-            "program": team.get("handle", ""),
-            "program_name": team.get("name", ""),
+            "title": attrs.get("title", "") or "",
+            "severity": _norm_severity(attrs.get("severity_rating")),
+            "disclosed_at": (attrs.get("disclosed_at") or "")[:10],
+            "url": attrs.get("url", "") or "",
+            "state": attrs.get("substate", "") or "",
+            "program": prog.get("handle", ""),
+            "program_name": prog.get("name", ""),
         })
 
     return results

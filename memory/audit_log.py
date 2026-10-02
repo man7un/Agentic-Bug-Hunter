@@ -12,7 +12,7 @@ import sys
 import time
 from pathlib import Path
 
-from memory.schemas import validate_audit_entry, make_audit_entry, SchemaError
+from memory.schemas import validate_audit_entry, make_audit_entry
 
 
 class AuditLog:

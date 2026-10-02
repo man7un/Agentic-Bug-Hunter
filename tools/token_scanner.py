@@ -24,10 +24,9 @@ Known limitations:
 
 import argparse
 import json
-import os
 import re
 import sys
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 

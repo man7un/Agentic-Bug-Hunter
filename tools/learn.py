@@ -13,7 +13,6 @@ import argparse
 import json
 import os
 import ssl
-import sys
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -264,14 +263,14 @@ def severity_order(s: str) -> int:
 def build_markdown(techs: list[str], results: list[dict]) -> str:
     """Build intel.md content."""
     lines = [
-        f"# Bug Intelligence Report",
-        f"",
+        "# Bug Intelligence Report",
+        "",
         f"**Technologies:** {', '.join(techs)}",
         f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-        f"**Sources:** GitHub Advisory DB, NVD CVE API, HackerOne Hacktivity",
-        f"",
-        f"---",
-        f"",
+        "**Sources:** GitHub Advisory DB, NVD CVE API, HackerOne Hacktivity",
+        "",
+        "---",
+        "",
     ]
 
     # Group by tech

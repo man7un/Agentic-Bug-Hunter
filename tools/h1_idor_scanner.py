@@ -14,7 +14,6 @@ import base64
 import json
 import time
 import sys
-from typing import Optional
 import urllib.request
 import urllib.error
 
@@ -109,7 +108,7 @@ def flag(test_name: str, token_b_response: dict, severity: str = "HIGH"):
 
 def check(test_name: str, resp_a: dict, resp_b: dict, severity: str = "HIGH"):
     """Compare A's response to B's. Flag if B got real data."""
-    same = is_same_data(resp_a, resp_b)
+    _same = is_same_data(resp_a, resp_b)
     b_data = resp_b.get("data", {})
     has_error = bool(resp_b.get("errors")) or "_http_error" in resp_b
 
@@ -184,7 +183,7 @@ def test_rest_report_idor(token_a: str, token_b: str, report_id: str):
             if field in data_b and data_b[field]:
                 flag(f"REST /reports/{report_id}.json — field: {field}", data_b)
                 return
-        print(f"  [NULL/OK] REST report — B got 200 but no sensitive fields")
+        print("  [NULL/OK] REST report — B got 200 but no sensitive fields")
     else:
         print(f"  [BLOCKED] REST report — B got {status_b}")
 
@@ -214,7 +213,7 @@ def test_duplicate_detector_idor(token_a: str, token_b: str, program_handle: str
         if b_nodes:
             flag("DuplicateDetectorReportsIndex cross-program access", r_b, "CRITICAL")
     else:
-        print(f"  [BLOCKED] DuplicateDetectorReportsIndex — B sees 0 or error")
+        print("  [BLOCKED] DuplicateDetectorReportsIndex — B sees 0 or error")
 
 
 def test_program_idor(token_a: str, token_b: str, program_handle: str):
@@ -428,7 +427,7 @@ def test_graphql_csrf(token_a: str):
             if acao == "*" or acao == "https://attacker.com":
                 flag("CORS wildcard/reflection on /graphql", {"acao": acao, "acac": acac}, "HIGH")
             else:
-                print(f"  [BLOCKED] CORS properly restricted")
+                print("  [BLOCKED] CORS properly restricted")
     except Exception as e:
         print(f"  [ERROR] {e}")
 
@@ -472,8 +471,8 @@ def test_2fa_rate_limit(token_b: str):
         time.sleep(0.2)
 
     if not blocked_at:
-        print(f"  [POTENTIAL] No rate limit detected after 15 attempts")
-        print(f"  Severity: MEDIUM — 2FA brute force may be possible")
+        print("  [POTENTIAL] No rate limit detected after 15 attempts")
+        print("  Severity: MEDIUM — 2FA brute force may be possible")
         FINDINGS.append({"test": "2FA rate limit missing", "severity": "MEDIUM"})
 
 
@@ -491,7 +490,7 @@ def test_s3_url(attachment_url: str, token_b: str):
             print(f"  Unauthenticated access: HTTP {r.status} — URL works without H1 session")
             print(f"  Content-Type: {r.headers.get('Content-Type')}")
             if r.status == 200:
-                print(f"  [INFO] S3 URL is publicly accessible — check if file is from PRIVATE report")
+                print("  [INFO] S3 URL is publicly accessible — check if file is from PRIVATE report")
     except urllib.error.HTTPError as e:
         print(f"  Unauthenticated access: HTTP {e.code} — BLOCKED")
 
