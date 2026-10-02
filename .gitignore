@@ -32,3 +32,6 @@ venv/
 # Tool output
 *.out
 nmap-output/
+
+# program_watch.py runtime state (machine-local snapshot, regenerated each poll)
+memory/program_watch_state.json
