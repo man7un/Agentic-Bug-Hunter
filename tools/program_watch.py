@@ -127,6 +127,31 @@ _NOTIFY_MAX = 6          # cap simultaneous popups
 _NOTIFY_TTL = "600"      # seconds a waiting popup may linger before timeout kills it
 
 
+def build_dossier(handle: str) -> str | None:
+    """Run program_dossier.py for a handle; return the written path, or None.
+
+    Best-effort: the dossier is a convenience, so any failure (network, the
+    program vanished between poll and dossier, a broken sibling tool) is logged
+    and skipped rather than failing the poll. The tool prints the path as its
+    last stdout line.
+    """
+    tool = os.path.join(os.path.dirname(os.path.abspath(__file__)), "program_dossier.py")
+    try:
+        proc = subprocess.run(
+            [sys.executable, tool, handle],
+            capture_output=True, text=True, timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"[program_watch] dossier for {handle} failed: {e}", file=sys.stderr)
+        return None
+    if proc.returncode != 0:
+        print(f"[program_watch] dossier for {handle} exited {proc.returncode}: "
+              f"{proc.stderr.strip()}", file=sys.stderr)
+        return None
+    lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
+    return lines[-1] if lines else None
+
+
 def desktop_notify(hits: list[dict]) -> None:
     """Fire best-effort desktop popups for new programs — one clickable popup
     per hit (Open button → browser), capped at _NOTIFY_MAX.
@@ -143,10 +168,13 @@ def desktop_notify(hits: list[dict]) -> None:
         if clickable:
             for p in hits[:_NOTIFY_MAX]:
                 tag = "💰 pays bounties" if p["offers_bounties"] else "VDP (rep only)"
+                body = f"{p['handle']} — {tag}\nClick Open to view on HackerOne."
+                if p.get("dossier"):
+                    body += f"\nDossier: {p['dossier']}"
                 env = {
                     **os.environ,
                     "T": f"🎯 New program: {p['name']}",
-                    "B": f"{p['handle']} — {tag}\nClick Open to view on HackerOne.",
+                    "B": body,
                     "U": p["url"],
                 }
                 subprocess.Popen(
@@ -197,6 +225,9 @@ def main() -> int:
     ap.add_argument("--json", action="store_true", help="Emit JSON.")
     ap.add_argument("--notify", action="store_true",
                     help="Also fire a desktop popup (notify-send) when there are hits.")
+    ap.add_argument("--dossier", action="store_true",
+                    help="Auto-build a scope+rank dossier (program_dossier.py) per new "
+                         "program and attach its path to the alert.")
     args = ap.parse_args()
 
     keywords = [k.strip().lower() for k in args.keywords.split(",") if k.strip()]
@@ -233,6 +264,11 @@ def main() -> int:
     # Persist the full current set so a program is reported only once.
     save_state(current)
 
+    # Auto-build a hunt dossier (passive scope+rank+intel) per new program.
+    if args.dossier and hits:
+        for p in hits:
+            p["dossier"] = build_dossier(p["handle"])
+
     if args.notify:
         desktop_notify(hits)
 
@@ -254,6 +290,8 @@ def main() -> int:
     for p in hits:
         tag = "💰 pays bounties" if p["offers_bounties"] else "VDP (rep only)"
         print(f"  • {p['name']}  [{p['handle']}]  — {tag}\n    {p['url']}")
+        if p.get("dossier"):
+            print(f"    dossier: {p['dossier']}")
     return 0
 
 
