@@ -80,8 +80,28 @@ def _graphql(query: str, timeout: int = 20) -> dict:
     return data
 
 
-def fetch_policy(handle: str) -> dict | None:
-    """Program policy + structured scope, or None if the program isn't found."""
+YWH_PROGRAM_API = "https://api.yeswehack.com/programs"
+# YesWeHack scope_type → an H1-style bucket so _TYPE_SCORE applies uniformly.
+_YWH_TYPE = {
+    "api": "API", "web-application": "URL", "ip-address": "CIDR",
+    "source-code": "SOURCE_CODE", "executable": "DOWNLOADABLE_EXECUTABLES",
+    "mobile-application": "OTHER_APK", "mobile-application-android": "GOOGLE_PLAY_APP_ID",
+    "mobile-application-ios": "APPLE_STORE_APP_ID", "android-application": "GOOGLE_PLAY_APP_ID",
+    "ios-application": "APPLE_STORE_APP_ID",
+}
+# YesWeHack publishes a per-asset criticality — fold it straight into the rank.
+_YWH_PRIORITY = {"CRITICAL": 5, "HIGH": 3, "MEDIUM": 1, "LOW": 0, "NONE": 0}
+
+
+def _get_json(url: str, timeout: int = 20) -> dict:
+    req = urllib.request.Request(
+        url, headers={"Accept": "application/json", "User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CTX) as resp:
+        return json.loads(resp.read().decode("utf-8", errors="replace"))
+
+
+def fetch_policy_h1(handle: str) -> dict | None:
+    """HackerOne policy + structured scope, or None if the program isn't found."""
     safe = handle.replace('"', '\\"')
     query = (
         '{ team(handle: "%s") { name handle offers_bounties url policy '
@@ -106,16 +126,72 @@ def fetch_policy(handle: str) -> dict | None:
             "bounty": bool(s.get("eligible_for_bounty")),
             "submit": s.get("eligible_for_submission", True),
             "instruction": (s.get("instruction") or "").strip(),
+            "priority": 0, "priority_label": "",
         }
         for s in ((team.get("structured_scopes") or {}).get("nodes") or [])
     ]
     return {
+        "source": "h1",
+        "platform": "HackerOne",
         "handle": team.get("handle", handle),
         "name": team.get("name", handle),
         "offers_bounties": bool(team.get("offers_bounties")),
         "url": team.get("url") or f"https://hackerone.com/{handle}",
         "policy_text": team.get("policy") or "",
         "scopes": scopes,
+        "out_of_scope_notes": [],   # H1 encodes this via non-submittable scopes
+        "reward_range": "",
+        "qualifying": [],
+    }
+
+
+def fetch_policy_ywh(slug: str) -> dict | None:
+    """YesWeHack program detail + scope, or None if not found/unavailable."""
+    try:
+        d = _get_json(f"{YWH_PROGRAM_API}/{urllib.parse.quote(slug)}")
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise
+    if not d or d.get("disabled") or d.get("archived"):
+        return None
+    pays = bool(d.get("bounty"))
+    scopes = []
+    for s in d.get("scopes", []):
+        ident = (s.get("scope") or "").strip()
+        if not ident:
+            continue
+        stype = (s.get("scope_type") or "").lower()
+        crit = (s.get("asset_value") or "").upper()
+        scopes.append({
+            "type": _YWH_TYPE.get(stype, "OTHER"),
+            "identifier": ident,
+            "bounty": pays,              # in-scope assets are bounty-eligible if the program pays
+            "submit": True,              # listed in-scope = submittable
+            "instruction": s.get("scope_type_name") or stype,
+            "priority": _YWH_PRIORITY.get(crit, 0),
+            "priority_label": crit,
+        })
+    oos = d.get("out_of_scope")
+    oos_notes = [str(x) for x in oos] if isinstance(oos, list) else ([str(oos)] if oos else [])
+    rmin, rmax = d.get("bounty_reward_min"), d.get("bounty_reward_max")
+    reward_range = f"${rmin}–${rmax}" if (rmin or rmax) else ""
+    qualifying = []
+    qv = d.get("qualifying_vulnerability")
+    if isinstance(qv, str) and qv.strip():
+        qualifying = [ln.strip("-* \t") for ln in qv.splitlines() if ln.strip()][:12]
+    return {
+        "source": "ywh",
+        "platform": "YesWeHack",
+        "handle": d.get("slug", slug),
+        "name": d.get("title", slug),
+        "offers_bounties": pays,
+        "url": f"https://yeswehack.com/programs/{d.get('slug', slug)}",
+        "policy_text": d.get("rules") or "",
+        "scopes": scopes,
+        "out_of_scope_notes": oos_notes,
+        "reward_range": reward_range,
+        "qualifying": qualifying,
     }
 
 
@@ -164,8 +240,13 @@ def rank_assets(scopes: list[dict]) -> list[dict]:
         score = _TYPE_SCORE.get(s["type"], 1)
         if s["bounty"]:
             score += 3
-        ident = s["identifier"].lower()
         reasons = []
+        # Platform-published criticality (YesWeHack asset_value) folds straight in.
+        prio = s.get("priority", 0)
+        if prio:
+            score += prio
+            reasons.append(s.get("priority_label", "").lower() or f"prio+{prio}")
+        ident = s["identifier"].lower()
         for kw, pts in _KEYWORD_SCORE.items():
             if kw in ident:
                 score += pts
@@ -195,6 +276,7 @@ def build_markdown(pol: dict, ranked: list[dict], disclosed: list[dict],
     L = [
         f"# Hunt Dossier — {pol['name']} (`{pol['handle']}`)",
         "",
+        f"- **Platform:** {pol.get('platform', pol['source'])}",
         f"- **Program:** {pol['url']}",
         f"- **Type:** {bounty}",
         f"- **Generated:** {today} (auto — passive scope+intel only, no active traffic sent)",
@@ -215,26 +297,45 @@ def build_markdown(pol: dict, ranked: list[dict], disclosed: list[dict],
     else:
         L.append("| — | — | — | _no submittable structured scope published_ | — | — |")
 
-    out_of_scope = [s for s in pol["scopes"] if not s["submit"]]
-    if out_of_scope:
-        L += ["", "## Explicitly NOT submittable (skip these)", ""]
-        for s in out_of_scope:
-            L.append(f"- `{s['identifier']}` ({s['type']})")
+    # Out of scope: H1 encodes it as non-submittable structured scopes; YWH
+    # publishes free-text notes.
+    if pol.get("out_of_scope_notes"):
+        L += ["", "## Out of scope (program notes — skip these)", ""]
+        for note in pol["out_of_scope_notes"][:20]:
+            L.append(f"- {note}")
+    else:
+        out_of_scope = [s for s in pol["scopes"] if not s["submit"]]
+        if out_of_scope:
+            L += ["", "## Explicitly NOT submittable (skip these)", ""]
+            for s in out_of_scope:
+                L.append(f"- `{s['identifier']}` ({s['type']})")
 
     L += ["", "## Suggested vuln classes (first passes)", ""]
     L += [f"- {c}" for c in vulns]
 
-    L += ["", "## Intel — recent disclosed reports on this program", ""]
-    if disclosed:
-        for d in disclosed:
-            amt = f" — ${d['awarded']}" if d.get("awarded") else ""
-            L.append(f"- [{d['severity']}] {d['title']}{amt}")
+    # Intel: H1 pulls disclosed reports via the Hacker API; YWH surfaces its
+    # published reward range + qualifying-vuln list from the program detail.
+    if pol["source"] == "ywh":
+        L += ["", "## Intel — program economics & qualifying vulns", ""]
+        if pol.get("reward_range"):
+            L.append(f"- Bounty range: **{pol['reward_range']}**")
+        if pol.get("qualifying"):
+            L.append("- Qualifying vulnerabilities (per program):")
+            L += [f"    - {q}" for q in pol["qualifying"]]
+        if not pol.get("reward_range") and not pol.get("qualifying"):
+            L.append(f"- See the program page for reward grid / rules: {pol['url']}")
     else:
-        L += [
-            "- _No public disclosure intel fetched — HackerOne deprecated the free "
-            "hacktivity GraphQL (now behind the authenticated Hacker API)._",
-            f"- Browse disclosed reports manually: {pol['url']}/hacktivity",
-        ]
+        L += ["", "## Intel — recent disclosed reports on this program", ""]
+        if disclosed:
+            for d in disclosed:
+                amt = f" — ${d['awarded']}" if d.get("awarded") else ""
+                L.append(f"- [{d['severity']}] {d['title']}{amt}")
+        else:
+            L += [
+                "- _No public disclosure intel fetched — HackerOne deprecated the free "
+                "hacktivity GraphQL (now behind the authenticated Hacker API)._",
+                f"- Browse disclosed reports manually: {pol['url']}/hacktivity",
+            ]
 
     top_target = ranked[0]["identifier"] if ranked else "<in-scope-asset>"
     L += [
@@ -267,23 +368,26 @@ def write_dossier(handle: str, markdown: str) -> str:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Build a hunt dossier for an H1 program.")
-    ap.add_argument("handle", help="HackerOne program handle, e.g. 'shopify'.")
+    ap = argparse.ArgumentParser(description="Build a hunt dossier for a program.")
+    ap.add_argument("handle", help="Program handle/slug (HackerOne handle, or YWH slug).")
+    ap.add_argument("--source", default="h1", choices=["h1", "ywh"],
+                    help="Platform the handle belongs to (default: h1).")
     ap.add_argument("--json", action="store_true", help="Emit structured JSON.")
     ap.add_argument("--stdout", action="store_true", help="Also print the markdown.")
     args = ap.parse_args()
 
+    fetcher = fetch_policy_h1 if args.source == "h1" else fetch_policy_ywh
     try:
-        pol = fetch_policy(args.handle)
+        pol = fetcher(args.handle)
     except (urllib.error.URLError, urllib.error.HTTPError, RuntimeError, TimeoutError) as e:
-        print(f"[dossier] API error for '{args.handle}': {e}", file=sys.stderr)
+        print(f"[dossier] API error for '{args.handle}' ({args.source}): {e}", file=sys.stderr)
         return 1
     if pol is None:
-        print(f"[dossier] program '{args.handle}' not found.", file=sys.stderr)
+        print(f"[dossier] program '{args.handle}' not found on {args.source}.", file=sys.stderr)
         return 2
 
     ranked = rank_assets(pol["scopes"])
-    disclosed = fetch_disclosed(args.handle)
+    disclosed = fetch_disclosed(args.handle) if args.source == "h1" else []
     vulns = suggest_vuln_classes(ranked)
     markdown = build_markdown(pol, ranked, disclosed, vulns)
     path = write_dossier(args.handle, markdown)

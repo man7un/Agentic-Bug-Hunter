@@ -236,7 +236,7 @@ _NOTIFY_MAX = 6          # cap simultaneous popups
 _NOTIFY_TTL = "600"      # seconds a waiting popup may linger before timeout kills it
 
 
-def build_dossier(handle: str) -> str | None:
+def build_dossier(handle: str, source: str = "h1") -> str | None:
     """Run program_dossier.py for a handle; return the written path, or None.
 
     Best-effort: the dossier is a convenience, so any failure (network, the
@@ -247,7 +247,7 @@ def build_dossier(handle: str) -> str | None:
     tool = os.path.join(os.path.dirname(os.path.abspath(__file__)), "program_dossier.py")
     try:
         proc = subprocess.run(
-            [sys.executable, tool, handle],
+            [sys.executable, tool, handle, "--source", source],
             capture_output=True, text=True, timeout=60,
         )
     except (OSError, subprocess.SubprocessError) as e:
@@ -399,12 +399,12 @@ def main() -> int:
     # Persist the full current set so a program is reported only once.
     save_state(current)
 
-    # Auto-build a hunt dossier (passive scope+rank+intel) — HackerOne only,
-    # since program_dossier.py reads the H1 scope API.
+    # Auto-build a hunt dossier (passive scope+rank+intel) per new program.
+    # Supported for both HackerOne and YesWeHack (program_dossier --source).
     if args.dossier and hits:
         for p in hits:
-            if p["source"] == "h1":
-                p["dossier"] = build_dossier(p["handle"])
+            if p["source"] in ("h1", "ywh"):
+                p["dossier"] = build_dossier(p["handle"], p["source"])
 
     if args.notify:
         desktop_notify(hits)
