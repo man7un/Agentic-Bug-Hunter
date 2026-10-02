@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import shutil
 import ssl
 import subprocess
@@ -236,6 +237,70 @@ _NOTIFY_MAX = 6          # cap simultaneous popups
 _NOTIFY_TTL = "600"      # seconds a waiting popup may linger before timeout kills it
 
 
+# Terminal emulators and how to make each run a command. Ordered by preference.
+_TERMINALS = [
+    ("ptyxis", lambda inner: ["ptyxis", "--new-window", "--", "bash", "-lc", inner]),
+    ("gnome-terminal", lambda inner: ["gnome-terminal", "--", "bash", "-lc", inner]),
+    ("konsole", lambda inner: ["konsole", "-e", "bash", "-lc", inner]),
+    ("xfce4-terminal", lambda inner: ["xfce4-terminal", "-x", "bash", "-lc", inner]),
+    ("mate-terminal", lambda inner: ["mate-terminal", "--", "bash", "-lc", inner]),
+    ("tilix", lambda inner: ["tilix", "-e", "bash", "-lc", inner]),
+    ("kitty", lambda inner: ["kitty", "bash", "-lc", inner]),
+    ("alacritty", lambda inner: ["alacritty", "-e", "bash", "-lc", inner]),
+    ("xterm", lambda inner: ["xterm", "-e", "bash", "-lc", inner]),
+]
+
+
+def _pick_terminal():
+    """Return (name, argv_builder) for an available terminal emulator, or (None, None)."""
+    for name, builder in _TERMINALS:
+        if shutil.which(name):
+            return name, builder
+    # x-terminal-emulator is a Debian alternative → resolve to the real binary.
+    xte = shutil.which("x-terminal-emulator")
+    if xte:
+        real = os.path.basename(os.path.realpath(xte))
+        for name, builder in _TERMINALS:
+            if name == real:
+                return real, builder
+        return "x-terminal-emulator", (
+            lambda inner: ["x-terminal-emulator", "-e", "bash", "-lc", inner])
+    return None, None
+
+
+def launch_terminals(hits: list[dict]) -> None:
+    """Open ONE terminal per new program, each starting a claude session teed up
+    at `/hunt-new <handle>` — i.e. paused at that program's approval gate.
+
+    One program per window: sessions never mix. Best-effort and detached — a
+    missing emulator or spawn error is logged, never fatal. This opens windows;
+    it does NOT start any active testing — the human still approves in each.
+    """
+    name, builder = _pick_terminal()
+    if not name:
+        print("[program_watch] --launch: no terminal emulator found; skipping.",
+              file=sys.stderr)
+        return
+    claude_bin = shutil.which("claude") or os.path.expanduser("~/.local/bin/claude")
+    for p in hits:
+        src = "" if p["source"] == "h1" else f" --source {p['source']}"
+        hunt_cmd = f"/hunt-new {p['handle']}{src}"
+        inner = (
+            f"cd {shlex.quote(BASE_DIR)} && "
+            f"{shlex.quote(claude_bin)} {shlex.quote(hunt_cmd)}; "
+            f"echo; echo '[hunt session ended — press Enter to close]'; read _"
+        )
+        try:
+            subprocess.Popen(builder(inner), start_new_session=True,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"[program_watch] launched hunt terminal ({name}) for "
+                  f"{p['handle']} [{p['source']}]")
+        except (OSError, subprocess.SubprocessError) as e:
+            print(f"[program_watch] --launch failed for {p['handle']}: {e}",
+                  file=sys.stderr)
+        time.sleep(1.0)  # stagger so the window manager places each window
+
+
 def build_dossier(handle: str, source: str = "h1") -> str | None:
     """Run program_dossier.py for a handle; return the written path, or None.
 
@@ -343,6 +408,10 @@ def main() -> int:
     ap.add_argument("--hunt-cmds", action="store_true",
                     help="For each new program, print a SEPARATE isolated hunt launch "
                          "command (one program per session — never mixed).")
+    ap.add_argument("--launch", action="store_true",
+                    help="Auto-open ONE terminal per new program, each starting a claude "
+                         "session at that program's /hunt-new approval gate (isolated, "
+                         "never mixed). Opens windows only — you still approve each.")
     args = ap.parse_args()
 
     keywords = [k.strip().lower() for k in args.keywords.split(",") if k.strip()]
@@ -411,6 +480,10 @@ def main() -> int:
 
     if args.notify:
         desktop_notify(hits)
+
+    # Auto-open an isolated hunt terminal per new program (one program/session).
+    if args.launch and hits:
+        launch_terminals(hits)
 
     if args.json:
         print(json.dumps({
