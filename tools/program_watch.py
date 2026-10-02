@@ -268,9 +268,16 @@ def _pick_terminal():
     return None, None
 
 
-def launch_terminals(hits: list[dict]) -> None:
+def launch_terminals(hits: list[dict], mode: str = "yolo") -> None:
     """Open ONE terminal per new program, each starting a claude session teed up
-    at `/hunt-new <handle>` — i.e. paused at that program's approval gate.
+    at `/hunt-new <handle> --mode <mode>` — i.e. paused at that program's
+    approval gate.
+
+    Auto-launched sessions default to `--mode yolo`: these are unattended, so
+    after the human approves (whenever they're at the PC) the hunt runs to
+    completion without further mid-hunt checkpoints. Typing `/hunt-new` by hand
+    is unaffected — it keeps the command's own `--normal` default. Submission is
+    human-gated in every mode.
 
     One program per window: sessions never mix. Best-effort and detached — a
     missing emulator or spawn error is logged, never fatal. This opens windows;
@@ -284,7 +291,7 @@ def launch_terminals(hits: list[dict]) -> None:
     claude_bin = shutil.which("claude") or os.path.expanduser("~/.local/bin/claude")
     for p in hits:
         src = "" if p["source"] == "h1" else f" --source {p['source']}"
-        hunt_cmd = f"/hunt-new {p['handle']}{src}"
+        hunt_cmd = f"/hunt-new {p['handle']}{src} --mode {mode}"
         inner = (
             f"cd {shlex.quote(BASE_DIR)} && "
             f"{shlex.quote(claude_bin)} {shlex.quote(hunt_cmd)}; "
@@ -412,6 +419,11 @@ def main() -> int:
                     help="Auto-open ONE terminal per new program, each starting a claude "
                          "session at that program's /hunt-new approval gate (isolated, "
                          "never mixed). Opens windows only — you still approve each.")
+    ap.add_argument("--launch-mode", choices=["paranoid", "normal", "yolo"],
+                    default="yolo",
+                    help="Hunt mode for AUTO-launched sessions (default: yolo — unattended, "
+                         "runs to completion after approval). Typing /hunt-new yourself is "
+                         "unaffected (stays --normal).")
     args = ap.parse_args()
 
     keywords = [k.strip().lower() for k in args.keywords.split(",") if k.strip()]
@@ -483,7 +495,7 @@ def main() -> int:
 
     # Auto-open an isolated hunt terminal per new program (one program/session).
     if args.launch and hits:
-        launch_terminals(hits)
+        launch_terminals(hits, args.launch_mode)
 
     if args.json:
         print(json.dumps({
