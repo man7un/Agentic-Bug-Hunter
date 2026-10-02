@@ -68,23 +68,44 @@ def _human_age(sec: float | None) -> str:
     return f"{sec // 86400}d ago"
 
 
-def _parse_log(max_finds: int = 20) -> tuple[list[dict], int, str]:
-    """Return (recent finds newest-first, total run count, last log line)."""
+# A log line signals a failure if it's a watcher status line mentioning an
+# error/failure, or a raw Python traceback/exception. Benign lines ("No new
+# matching programs", "launched hunt terminal", "Seeded baseline") never match.
+_ERROR_RE = re.compile(r"(error|failed|traceback|exception)", re.IGNORECASE)
+
+
+def _is_error_line(ln: str) -> bool:
+    s = ln.strip()
+    if s.startswith("[program_watch]") or s.startswith("[dossier]"):
+        return bool(_ERROR_RE.search(s))
+    return (s.startswith("Traceback (most recent call last)")
+            or bool(re.match(r"\w*(Error|Exception):", s)))
+
+
+def _parse_log(max_finds: int = 20) -> tuple[list[dict], int, str, dict | None, bool]:
+    """Return (recent finds newest-first, run count, last status line,
+    last error {line, when} or None, whether the most recent run had an error)."""
     try:
         with open(LOG_PATH, encoding="utf-8", errors="replace") as f:
             lines = f.read().splitlines()
     except FileNotFoundError:
-        return [], 0, ""
+        return [], 0, "", None, False
     finds: list[dict] = []
     run_count = 0
     cur_run = ""
     last_status = ""
+    last_error: dict | None = None
+    cur_run_had_error = False
     i = 0
     while i < len(lines):
         ln = lines[i]
         if ln.startswith("=== "):
             run_count += 1
             cur_run = ln.strip("= ").strip()
+            cur_run_had_error = False
+        elif _is_error_line(ln):
+            last_error = {"line": ln.strip(), "when": cur_run}
+            cur_run_had_error = True
         elif ln.startswith("[program_watch]"):
             last_status = ln
         elif ln.strip().startswith("• ["):
@@ -105,7 +126,7 @@ def _parse_log(max_finds: int = 20) -> tuple[list[dict], int, str]:
                 })
         i += 1
     finds.reverse()
-    return finds[:max_finds], run_count, last_status
+    return finds[:max_finds], run_count, last_status, last_error, cur_run_had_error
 
 
 def render() -> str:
@@ -117,7 +138,7 @@ def render() -> str:
     updated = state.get("updated_at", "")
     age = _age_seconds(updated)
     healthy = age is not None and age <= HEALTHY_WINDOW_S
-    finds, run_count, last_status = _parse_log()
+    finds, run_count, last_status, last_error, last_run_had_error = _parse_log()
 
     status_color = "#3fb950" if healthy else "#f85149"
     status_text = "RUNNING" if healthy else ("STALE — last check too long ago"
@@ -146,6 +167,25 @@ def render() -> str:
         find_rows = ('<tr><td colspan="5" class="dim">No new programs logged yet. '
                      'The watcher logs a line every run; new ones show here.</td></tr>')
 
+    # Error banner: red if the most recent run errored, amber if an error
+    # happened earlier but a run has succeeded since, green if clean.
+    if last_run_had_error and last_error:
+        bg, brd, txt = "#2d1416", "#f8514955", "#f85149"
+        head = "⚠ Last run had an error"
+        body_err = (f'<div class="dim">{html.escape(last_error["when"])}</div>'
+                    f'<code>{html.escape(last_error["line"])}</code>')
+    elif last_error:
+        bg, brd, txt = "#2a2113", "#d2992255", "#d29922"
+        head = "⚠ Last error (earlier — a run has succeeded since)"
+        body_err = (f'<div class="dim">{html.escape(last_error["when"])}</div>'
+                    f'<code>{html.escape(last_error["line"])}</code>')
+    else:
+        bg, brd, txt = "#11271a", "#3fb95055", "#3fb950"
+        head = "✓ No errors logged"
+        body_err = '<div class="dim">every poll has completed cleanly</div>'
+    error_html = (f'<div class="err" style="background:{bg};border:1px solid {brd}">'
+                  f'<b style="color:{txt}">{head}</b>{body_err}</div>')
+
     return f"""<!doctype html>
 <html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -164,6 +204,9 @@ def render() -> str:
           box-shadow:0 0 10px {status_color}; }}
   .big {{ font-size:18px; font-weight:700; color:{status_color}; }}
   .grid {{ display:flex; flex-wrap:wrap; gap:8px; margin:8px 0 16px; }}
+  .err {{ padding:12px 16px; border-radius:10px; margin:12px 0; }}
+  .err code {{ display:block; margin-top:6px; font-size:12px; color:#c9d1d9;
+               white-space:pre-wrap; word-break:break-word; }}
   .pill {{ background:#161b22; border:1px solid #30363d; border-radius:20px;
            padding:5px 12px; font-size:13px; }}
   .plat {{ background:#1f6feb22; border:1px solid #1f6feb55; border-radius:6px;
@@ -186,6 +229,8 @@ def render() -> str:
         · checks every 6h · {run_count} runs logged</div>
     </div>
   </div>
+
+  {error_html}
 
   <div><b>Tracking</b> {len(progs)} programs:</div>
   <div class="grid">{src_rows}</div>
