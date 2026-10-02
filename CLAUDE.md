@@ -18,7 +18,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `skills/report-writing/` | H1/Bugcrowd/Intigriti/Immunefi report templates, CVSS 3.1, human tone |
 | `skills/triage-validation/` | 7-Question Gate, 4 gates, never-submit list, conditionally valid table |
 
-### Commands (14 slash commands)
+### Commands (15 slash commands)
 
 > **Note:** All commands are prefixed to avoid conflicts with Claude Code's built-in commands.
 > `/resume` is a reserved Claude Code command — use `/pickup` to continue a previous hunt.
@@ -38,6 +38,7 @@ This repo is a Claude Code plugin for professional bug bounty hunting across Hac
 | `/pickup` | `/pickup target.com` — pick up previous hunt (was `/resume`) |
 | `/remember` | `/remember` — log finding to hunt memory |
 | `/intel` | `/intel target.com` — fetch CVE + disclosure intel |
+| `/hunt-new` | `/hunt-new <handle>` — approval gate for a newly detected program: reads/builds its dossier, shows scope + ranked surface, then on explicit approval launches a bounded `/autopilot` |
 | `/token-scan` | `/token-scan <contract>` — meme coin/token rug pull scanner |
 
 ### Agents (8 specialized agents)
