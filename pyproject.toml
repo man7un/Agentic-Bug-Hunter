@@ -60,6 +60,11 @@ py-modules = []
 # argparse / sys.exit at import time, which crashes collection if discovered.
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+# Put the repo root on sys.path so tests/conftest.py can `import memory` (a
+# top-level package). Without this the bare `pytest` console script fails with
+# ModuleNotFoundError: No module named 'memory' — only `python -m pytest`, which
+# implicitly adds the cwd, would work. pythonpath makes both invocations work.
+pythonpath = ["."]
 addopts = "-q"
 
 [tool.ruff]
