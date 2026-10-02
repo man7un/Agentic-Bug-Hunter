@@ -340,6 +340,9 @@ def main() -> int:
     ap.add_argument("--sources", default=",".join(DEFAULT_SOURCES),
                     help=f"Comma-separated sources to poll (default: "
                          f"{','.join(DEFAULT_SOURCES)}). Available: {','.join(SOURCES)}.")
+    ap.add_argument("--hunt-cmds", action="store_true",
+                    help="For each new program, print a SEPARATE isolated hunt launch "
+                         "command (one program per session — never mixed).")
     args = ap.parse_args()
 
     keywords = [k.strip().lower() for k in args.keywords.split(",") if k.strip()]
@@ -433,6 +436,14 @@ def main() -> int:
         print(f"  • [{p['platform']}] {p['name']}  [{p['handle']}]  — {tag}\n    {p['url']}")
         if p.get("dossier"):
             print(f"    dossier: {p['dossier']}")
+
+    if args.hunt_cmds:
+        print("\n  To hunt — run EACH in its OWN terminal (one program per session, "
+              "never mixed):")
+        for i, p in enumerate(hits, 1):
+            src = "" if p["source"] == "h1" else f" --source {p['source']}"
+            print(f"    [{i}] cd \"{BASE_DIR}\" && claude")
+            print(f"        then approve:  /hunt-new {p['handle']}{src}")
     return 0
 
 
