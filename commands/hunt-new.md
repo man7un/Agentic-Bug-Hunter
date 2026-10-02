@@ -1,5 +1,5 @@
 ---
-description: Approval gate for a newly detected program — reads/builds its dossier, shows scope + ranked surface, then (only on explicit human approval) kicks off a bounded, scope-checked /autopilot hunt. Usage: /hunt-new <handle> [--mode paranoid|normal|yolo] [--vuln-class <class>]
+description: Approval gate for a newly detected program (HackerOne or YesWeHack) — reads/builds its dossier, shows scope + ranked surface, then (only on explicit human approval) kicks off a bounded, scope-checked /autopilot hunt. Usage: /hunt-new <handle> [--source h1|ywh] [--mode paranoid|normal|yolo] [--vuln-class <class>]
 ---
 
 # /hunt-new
@@ -12,32 +12,40 @@ command sends active traffic at the target until you explicitly approve.
 ## Usage
 
 ```
-/hunt-new shopify                      # review dossier, approve, then /autopilot --normal
-/hunt-new shopify --mode paranoid      # stop at every finding/signal
-/hunt-new shopify --vuln-class idor    # single-class hunt via /hunt instead of full autopilot
+/hunt-new shopify                              # HackerOne (default source)
+/hunt-new infomaniak-bug-bounty-program --source ywh   # YesWeHack
+/hunt-new shopify --mode paranoid              # stop at every finding/signal
+/hunt-new shopify --vuln-class idor            # single-class hunt via /hunt
 ```
 
-`<handle>` is the HackerOne program handle (as it appears in `program_watch`
-alerts and the dossier filename). Default mode is `--normal`.
+`<handle>` is the program's handle/slug as it appears in `program_watch` alerts
+(the `[HackerOne]` / `[YesWeHack]` tag tells you the source). `--source` is
+`h1` (default) or `ywh`. Default mode is `--normal`.
 
 ## Steps (follow in order)
 
-### 1. Load the dossier — do NOT touch the target yet
-- Look for the newest `findings/dossiers/<handle>-*.md`.
-- If none exists (or it's from a prior day and you want it fresh), build it:
-  `python3 tools/program_dossier.py <handle>` — this is **passive** (reads
-  HackerOne metadata only, sends no traffic to the target). Then read the file
-  it writes.
-- If `program_dossier.py` exits non-zero (program not found / API error), stop
-  and report that — do not improvise a target.
+### 1. Resolve the source, then load the dossier — do NOT touch the target yet
+- **Source:** use `--source` if given. If omitted, default to `h1`; if the
+  dossier build then reports "not found on h1" (exit 2), retry once with
+  `--source ywh` before giving up (the `program_watch` alert's platform tag is
+  the authoritative hint if you have it).
+- Look for the newest `findings/dossiers/<handle>-*.md`. Confirm its
+  **`Platform:`** line matches the source you intend; if it doesn't, rebuild.
+- To build (or refresh) it: `python3 tools/program_dossier.py <handle> --source <src>`
+  — this is **passive** (reads platform metadata only, sends no traffic to the
+  target). Then read the file it writes.
+- If `program_dossier.py` exits non-zero on the resolved source (program not
+  found / API error), stop and report that — do not improvise a target.
 
 ### 2. Present the brief to the human
 Summarize from the dossier, concisely:
-- Program name, handle, URL, and whether it **pays bounties** or is a VDP.
+- Program name, handle, **platform**, URL, and whether it **pays bounties** or is a VDP.
 - The **top 5 ranked in-scope assets** (with their scores/signals).
-- Any **explicitly non-submittable** assets (so they're not touched).
+- Any **out-of-scope / non-submittable** assets (so they're not touched) — H1
+  lists these as non-submittable scopes, YesWeHack as out-of-scope notes.
 - **Suggested vuln classes** for the first passes.
-- **Recent disclosed reports** (intel on what pays here), if the dossier has any.
+- The dossier's **intel** section: disclosed reports (HackerOne) or reward range
+  + qualifying vulns (YesWeHack), if present.
 - The single **proposed first target**: the top-ranked *submittable* asset. If
   it's a wildcard (`*.example.com`), say recon will enumerate concrete hosts
   under it.
