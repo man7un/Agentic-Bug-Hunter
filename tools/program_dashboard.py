@@ -27,6 +27,7 @@ import html
 import json
 import os
 import re
+import subprocess
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -36,6 +37,27 @@ LOG_PATH = os.path.expanduser("~/.program_watch.log")
 # One 6h cycle + a little slack: if no successful check within this, flag stale.
 HEALTHY_WINDOW_S = 7 * 3600
 REFRESH_S = 30
+
+
+def _auto_hunt_mode() -> str:
+    """What mode unattended (auto-launched) hunts use, read from the crontab.
+
+    Returns the --launch-mode value, 'yolo' when --launch is scheduled without
+    an explicit mode (the default), 'manual (no auto-open)' when the watcher is
+    scheduled but won't open hunt terminals, or 'not scheduled'/'unknown'.
+    """
+    try:
+        out = subprocess.run(["crontab", "-l"], capture_output=True, text=True,
+                             timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+    active = [ln for ln in out.splitlines()
+              if "program_watch.py" in ln and not ln.lstrip().startswith("#")]
+    for ln in active:
+        if "--launch" in ln:
+            m = re.search(r"--launch-mode\s+(\w+)", ln)
+            return m.group(1) if m else "yolo"
+    return "manual (no auto-open)" if active else "not scheduled"
 
 
 def _load_state() -> dict:
@@ -139,6 +161,7 @@ def render() -> str:
     age = _age_seconds(updated)
     healthy = age is not None and age <= HEALTHY_WINDOW_S
     finds, run_count, last_status, last_error, last_run_had_error = _parse_log()
+    auto_mode = _auto_hunt_mode()
 
     status_color = "#3fb950" if healthy else "#f85149"
     status_text = "RUNNING" if healthy else ("STALE — last check too long ago"
@@ -227,6 +250,8 @@ def render() -> str:
       <div class="big">{status_text}</div>
       <div class="dim">Last check: {html.escape(updated or "—")} ({_human_age(age)})
         · checks every 6h · {run_count} runs logged</div>
+      <div class="dim">Auto-hunt mode (unattended runs): <b style="color:#58a6ff">{html.escape(auto_mode)}</b>
+        · manual <code style="background:#161b22;padding:1px 5px;border-radius:4px">/hunt-new</code> stays normal</div>
     </div>
   </div>
 
