@@ -112,29 +112,69 @@ def save_state(seen: dict[str, dict]) -> None:
     os.replace(tmp, STATE_PATH)  # atomic
 
 
-def desktop_notify(hits: list[dict]) -> None:
-    """Fire a single best-effort desktop popup summarizing the hits.
+# Clickable action: notify-send --action implies --wait (it blocks until the
+# user clicks or the popup closes), so each popup runs detached and under a
+# `timeout` cap — it must never block or outlive the poll. On click, the action
+# key "open" is printed to stdout and we xdg-open the program URL. T/B/U are
+# passed via the environment, never interpolated, so a program name with quotes
+# can't break or inject into the shell.
+_CLICK_SCRIPT = (
+    'sel=$(notify-send --urgency=normal --app-name=program_watch '
+    '--action=open=Open "$T" "$B"); '
+    '[ "$sel" = open ] && xdg-open "$U" >/dev/null 2>&1'
+)
+_NOTIFY_MAX = 6          # cap simultaneous popups
+_NOTIFY_TTL = "600"      # seconds a waiting popup may linger before timeout kills it
 
-    Never raises: notify-send may be missing, or (common under cron) the
-    D-Bus/display session may be unreachable. A failed popup must not fail the
-    poll, so all errors are swallowed — the log line is the source of truth.
+
+def desktop_notify(hits: list[dict]) -> None:
+    """Fire best-effort desktop popups for new programs — one clickable popup
+    per hit (Open button → browser), capped at _NOTIFY_MAX.
+
+    Never raises and never blocks the poll: popups are spawned detached. If the
+    click toolchain (xdg-open/timeout) is missing, falls back to a single
+    non-clickable summary. The log line remains the source of truth.
     """
     if not hits or not shutil.which("notify-send"):
         return
-    title = f"🎯 {len(hits)} new bug bounty program(s)"
-    lines = []
-    for p in hits[:8]:
-        tag = "💰" if p["offers_bounties"] else "VDP"
-        lines.append(f"• {p['name']} [{p['handle']}] — {tag}")
-    if len(hits) > 8:
-        lines.append(f"…and {len(hits) - 8} more")
-    body = "\n".join(lines)
+
+    clickable = shutil.which("xdg-open") and shutil.which("timeout")
     try:
-        subprocess.run(
-            ["notify-send", "--urgency=normal", "--app-name=program_watch",
-             title, body],
-            timeout=10, check=False,
-        )
+        if clickable:
+            for p in hits[:_NOTIFY_MAX]:
+                tag = "💰 pays bounties" if p["offers_bounties"] else "VDP (rep only)"
+                env = {
+                    **os.environ,
+                    "T": f"🎯 New program: {p['name']}",
+                    "B": f"{p['handle']} — {tag}\nClick Open to view on HackerOne.",
+                    "U": p["url"],
+                }
+                subprocess.Popen(
+                    ["timeout", _NOTIFY_TTL, "bash", "-c", _CLICK_SCRIPT],
+                    env=env, start_new_session=True,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+            if len(hits) > _NOTIFY_MAX:
+                subprocess.Popen(
+                    ["notify-send", "--app-name=program_watch",
+                     f"🎯 +{len(hits) - _NOTIFY_MAX} more new program(s)",
+                     "See ~/.program_watch.log for the full list."],
+                    start_new_session=True,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+        else:
+            # Fallback: single non-clickable summary popup.
+            lines = []
+            for p in hits[:8]:
+                tag = "💰" if p["offers_bounties"] else "VDP"
+                lines.append(f"• {p['name']} [{p['handle']}] — {tag}")
+            if len(hits) > 8:
+                lines.append(f"…and {len(hits) - 8} more")
+            subprocess.run(
+                ["notify-send", "--urgency=normal", "--app-name=program_watch",
+                 f"🎯 {len(hits)} new bug bounty program(s)", "\n".join(lines)],
+                timeout=10, check=False,
+            )
     except (OSError, subprocess.SubprocessError):
         pass
 
