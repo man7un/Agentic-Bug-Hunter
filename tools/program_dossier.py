@@ -27,6 +27,7 @@ import ssl
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 H1_GRAPHQL = "https://hackerone.com/graphql"
@@ -119,34 +120,37 @@ def fetch_policy(handle: str) -> dict | None:
 
 
 def fetch_disclosed(handle: str, limit: int = 8) -> list[dict]:
-    """Recent disclosed reports for the program (intel on what pays here)."""
-    safe = handle.replace('"', '\\"')
-    query = (
-        "{ hacktivity_items(first: %d, query: {"
-        'team: { handle: { _eq: "%s" } }, disclosed_at: { _is_null: false } }) '
-        "{ nodes { ... on Disclosed { "
-        "report { title severity_rating } total_awarded_amount latest_disclosable_action } } } }"
-        % (limit, safe)
-    )
-    # HackerOne deprecated the public hacktivity GraphQL (now requires the
-    # authenticated Hacker API), so this is best-effort: any failure — deprecation
-    # (non-JSON body → JSONDecodeError), schema drift, or network — degrades to
-    # "no public intel" rather than breaking the dossier.
+    """Recent disclosed reports for the program (intel on what pays here).
+
+    Uses the Hacker API hacktivity feed (JSON:API, public/no-auth) — the public
+    GraphQL hacktivity_items query was deprecated by HackerOne in 2026. Still
+    best-effort: any failure degrades to an empty list, not a broken dossier.
+    """
+    params = urllib.parse.urlencode({
+        "queryString": f"disclosed:true AND team_handle:{handle}",
+        "page[size]": limit,
+        "sort": "-latest_disclosable_activity_at",
+    })
+    url = f"https://api.hackerone.com/v1/hackers/hacktivity?{params}"
+    req = urllib.request.Request(
+        url, headers={"Accept": "application/json", "User-Agent": USER_AGENT})
     try:
-        nodes = (((_graphql(query).get("data") or {}).get("hacktivity_items") or {})
-                 .get("nodes") or [])
-    except (RuntimeError, urllib.error.URLError, urllib.error.HTTPError,
-            TimeoutError, json.JSONDecodeError):
+        with urllib.request.urlopen(req, timeout=20, context=_SSL_CTX) as resp:
+            items = (json.loads(resp.read().decode("utf-8", errors="replace"))
+                     .get("data") or [])
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError,
+            json.JSONDecodeError):
         return []
     out = []
-    for n in nodes:
-        rep = (n or {}).get("report") or {}
-        if not rep.get("title"):
+    for it in items:
+        a = (it or {}).get("attributes") or {}
+        if not a.get("title") or not a.get("disclosed_at"):
             continue
+        sev = a.get("severity_rating")
         out.append({
-            "title": rep.get("title", ""),
-            "severity": rep.get("severity_rating") or "n/a",
-            "awarded": n.get("total_awarded_amount"),
+            "title": a.get("title", ""),
+            "severity": "n/a" if not sev or str(sev).lower() == "none" else sev,
+            "awarded": a.get("total_awarded_amount"),
         })
     return out
 

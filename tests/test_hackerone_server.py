@@ -64,28 +64,28 @@ class TestGraphQLRequest:
 
 class TestSearchDisclosedReports:
 
-    @patch("server._graphql_request")
-    def test_returns_reports(self, mock_gql):
-        mock_gql.return_value = {
-            "data": {
-                "hacktivity_items": {
-                    "nodes": [
-                        {
-                            "report": {
-                                "title": "SSRF via webhook URL",
-                                "severity_rating": "critical",
-                                "disclosed_at": "2026-02-10T00:00:00Z",
-                                "url": "https://hackerone.com/reports/99999",
-                                "substate": "resolved",
-                            },
-                            "team": {
-                                "handle": "acme",
-                                "name": "Acme Corp",
-                            },
-                        }
-                    ]
+    @patch("server._hacktivity_api_get")
+    def test_returns_reports(self, mock_api):
+        # Hacker API JSON:API shape.
+        mock_api.return_value = {
+            "data": [
+                {
+                    "id": 99999,
+                    "type": "hacktivity_item",
+                    "attributes": {
+                        "title": "SSRF via webhook URL",
+                        "severity_rating": "critical",
+                        "disclosed_at": "2026-02-10T00:00:00Z",
+                        "url": "https://hackerone.com/reports/99999",
+                        "substate": "resolved",
+                    },
+                    "relationships": {
+                        "program": {"data": {"attributes": {
+                            "handle": "acme", "name": "Acme Corp",
+                        }}}
+                    },
                 }
-            }
+            ]
         }
 
         results = search_disclosed_reports(keyword="ssrf")
@@ -93,47 +93,62 @@ class TestSearchDisclosedReports:
         assert results[0]["title"] == "SSRF via webhook URL"
         assert results[0]["severity"] == "CRITICAL"
         assert results[0]["program"] == "acme"
+        assert results[0]["program_name"] == "Acme Corp"
 
-    @patch("server._graphql_request")
-    def test_empty_results(self, mock_gql):
-        mock_gql.return_value = {
-            "data": {"hacktivity_items": {"nodes": []}}
-        }
+    @patch("server._hacktivity_api_get")
+    def test_severity_none_normalized(self, mock_api):
+        # HackerOne sends severity as the string "None" or null for some items.
+        mock_api.return_value = {"data": [{
+            "attributes": {
+                "title": "Informative finding",
+                "severity_rating": "None",
+                "disclosed_at": "2026-02-10T00:00:00Z",
+                "url": "https://hackerone.com/reports/1",
+                "substate": "informative",
+            },
+            "relationships": {},
+        }]}
+        results = search_disclosed_reports(keyword="x")
+        assert results[0]["severity"] == "UNKNOWN"
+        assert results[0]["program"] == ""  # missing relationship → empty, no crash
+
+    @patch("server._hacktivity_api_get")
+    def test_empty_results(self, mock_api):
+        mock_api.return_value = {"data": []}
         results = search_disclosed_reports(keyword="nonexistent")
         assert results == []
 
-    @patch("server._graphql_request")
-    def test_program_filter(self, mock_gql):
-        mock_gql.return_value = {
-            "data": {"hacktivity_items": {"nodes": []}}
-        }
+    @patch("server._hacktivity_api_get")
+    def test_program_filter(self, mock_api):
+        mock_api.return_value = {"data": []}
         search_disclosed_reports(program="shopify", limit=5)
-        call_args = mock_gql.call_args[0][0]
-        assert "shopify" in call_args
+        query_string = mock_api.call_args[0][0]
+        assert "team_handle:shopify" in query_string
+        assert "disclosed:true" in query_string
 
     def test_limit_clamped(self):
         # limit is clamped in the function, verify no crash
-        with patch("server._graphql_request") as mock_gql:
-            mock_gql.return_value = {"data": {"hacktivity_items": {"nodes": []}}}
+        with patch("server._hacktivity_api_get") as mock_api:
+            mock_api.return_value = {"data": []}
             search_disclosed_reports(keyword="test", limit=100)
             search_disclosed_reports(keyword="test", limit=-5)
+            # clamped into [1, 25]
+            assert mock_api.call_args_list[0][0][1] == 25
+            assert mock_api.call_args_list[1][0][1] == 1
 
-    @patch("server._graphql_request")
-    def test_skips_null_report(self, mock_gql):
-        mock_gql.return_value = {
-            "data": {
-                "hacktivity_items": {
-                    "nodes": [
-                        {"report": None, "team": None},
-                        {
-                            "report": {"title": "Valid", "severity_rating": "low",
-                                       "disclosed_at": "2026-01-01", "url": "https://h1.com/1", "substate": "resolved"},
-                            "team": {"handle": "test", "name": "Test"},
-                        },
-                    ]
-                }
-            }
-        }
+    @patch("server._hacktivity_api_get")
+    def test_skips_non_disclosed_items(self, mock_api):
+        # Feed mixes undisclosed items (null disclosed_at) with disclosed ones.
+        mock_api.return_value = {"data": [
+            {"attributes": {"title": None, "disclosed_at": None}, "relationships": {}},
+            {
+                "attributes": {"title": "Valid", "severity_rating": "low",
+                               "disclosed_at": "2026-01-01", "url": "https://h1.com/1",
+                               "substate": "resolved"},
+                "relationships": {"program": {"data": {"attributes": {
+                    "handle": "test", "name": "Test"}}}},
+            },
+        ]}
         results = search_disclosed_reports(keyword="test")
         assert len(results) == 1
         assert results[0]["title"] == "Valid"
