@@ -27,7 +27,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import ssl
+import subprocess
 import sys
 import time
 import urllib.error
@@ -110,6 +112,33 @@ def save_state(seen: dict[str, dict]) -> None:
     os.replace(tmp, STATE_PATH)  # atomic
 
 
+def desktop_notify(hits: list[dict]) -> None:
+    """Fire a single best-effort desktop popup summarizing the hits.
+
+    Never raises: notify-send may be missing, or (common under cron) the
+    D-Bus/display session may be unreachable. A failed popup must not fail the
+    poll, so all errors are swallowed — the log line is the source of truth.
+    """
+    if not hits or not shutil.which("notify-send"):
+        return
+    title = f"🎯 {len(hits)} new bug bounty program(s)"
+    lines = []
+    for p in hits[:8]:
+        tag = "💰" if p["offers_bounties"] else "VDP"
+        lines.append(f"• {p['name']} [{p['handle']}] — {tag}")
+    if len(hits) > 8:
+        lines.append(f"…and {len(hits) - 8} more")
+    body = "\n".join(lines)
+    try:
+        subprocess.run(
+            ["notify-send", "--urgency=normal", "--app-name=program_watch",
+             title, body],
+            timeout=10, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def matches(prog: dict, handle: str, keywords: list[str]) -> bool:
     if not keywords:
         return True
@@ -126,6 +155,8 @@ def main() -> int:
     ap.add_argument("--bounties-only", action="store_true",
                     help="Only alert on programs that pay bounties.")
     ap.add_argument("--json", action="store_true", help="Emit JSON.")
+    ap.add_argument("--notify", action="store_true",
+                    help="Also fire a desktop popup (notify-send) when there are hits.")
     args = ap.parse_args()
 
     keywords = [k.strip().lower() for k in args.keywords.split(",") if k.strip()]
@@ -161,6 +192,9 @@ def main() -> int:
 
     # Persist the full current set so a program is reported only once.
     save_state(current)
+
+    if args.notify:
+        desktop_notify(hits)
 
     if args.json:
         print(json.dumps({
