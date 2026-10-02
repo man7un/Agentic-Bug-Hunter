@@ -15,7 +15,6 @@ Usage:
 
 import argparse
 import sys
-import json
 
 # Sneaky Bits characters
 ZERO = '\u2062'  # Invisible Times
@@ -142,7 +141,7 @@ def main():
     gen.add_argument("--output", help="Output directory for payload files")
 
     # Test round-trip
-    test = subparsers.add_parser("test", help="Test encode/decode round-trip")
+    _test = subparsers.add_parser("test", help="Test encode/decode round-trip")
 
     args = parser.parse_args()
 
@@ -157,7 +156,7 @@ def main():
         print(f"[*] Visible appearance: '{result}'")
         print(f"[*] Hex: {result.encode('utf-8').hex()}")
         # Copy-pasteable output
-        print(f"\n--- RAW OUTPUT (copy below this line) ---")
+        print("\n--- RAW OUTPUT (copy below this line) ---")
         sys.stdout.write(result)
         sys.stdout.write("\n")
 
@@ -177,7 +176,7 @@ def main():
                 f.write(result)
             print(f"  Saved to: {args.output}")
         else:
-            print(f"\n--- RAW OUTPUT ---")
+            print("\n--- RAW OUTPUT ---")
             sys.stdout.write(result)
             sys.stdout.write("\n")
 

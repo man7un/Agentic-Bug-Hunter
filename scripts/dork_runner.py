@@ -6,10 +6,8 @@ Usage: python3 dork_runner.py -d target.com [-c category] [-o output.txt]
 """
 
 import argparse
-import time
 import sys
 import json
-import random
 import urllib.parse
 from datetime import datetime
 

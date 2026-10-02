@@ -1,6 +1,5 @@
 """Tests for CredentialStore — secure .env-based credential loading."""
 
-import pytest
 
 from tools.credential_store import CredentialStore
 

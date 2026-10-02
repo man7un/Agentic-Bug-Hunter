@@ -201,7 +201,7 @@ def ask_choice(prompt: str, choices: list[tuple[str, str]]) -> str:
     for key, label in choices:
         print(f"    {CYAN}{key}{RESET}) {label}")
     while True:
-        val = input(f"  Choice: ").strip().upper()
+        val = input("  Choice: ").strip().upper()
         if val in [k for k, _ in choices]:
             return val
         print(f"  {YELLOW}Invalid — enter one of: {', '.join(k for k,_ in choices)}{RESET}")
@@ -610,8 +610,8 @@ def main():
     print(f"\n{BOLD}{CYAN}{'═' * 60}{RESET}")
     print(f"{BOLD}{CYAN}  Bug Bounty Validation Assistant{RESET}")
     print(f"{BOLD}{CYAN}{'═' * 60}{RESET}")
-    print(f"\nThis will walk you through the 4 validation gates,")
-    print(f"calculate your CVSS score, and generate a report skeleton.\n")
+    print("\nThis will walk you through the 4 validation gates,")
+    print("calculate your CVSS score, and generate a report skeleton.\n")
 
     # Collect basic info upfront
     section("Target Information")
@@ -692,10 +692,10 @@ def main():
 
     print(f"  {BOLD}{GREEN}Report skeleton generated:{RESET} {output_path}")
     print(f"\n  {BOLD}Next steps:{RESET}")
-    print(f"    1. Fill in the actual HTTP request + response in the PoC section")
-    print(f"    2. Attach screenshots (naming: TARGET-VULN-TYPE-STEP-N.png)")
-    print(f"    3. Replace all [bracketed] placeholders with specific details")
-    print(f"    4. Run /bug-bounty-report for the submission checklist")
+    print("    1. Fill in the actual HTTP request + response in the PoC section")
+    print("    2. Attach screenshots (naming: TARGET-VULN-TYPE-STEP-N.png)")
+    print("    3. Replace all [bracketed] placeholders with specific details")
+    print("    4. Run /bug-bounty-report for the submission checklist")
     print()
 
 

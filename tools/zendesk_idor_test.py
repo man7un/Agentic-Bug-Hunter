@@ -209,7 +209,7 @@ def test_graphql():
                         # Save full schema
                         with open("recon/zendesk/graphql_schema.json", "w") as f:
                             json.dump(data, f, indent=2)
-                        print(f"    Schema saved to recon/zendesk/graphql_schema.json")
+                        print("    Schema saved to recon/zendesk/graphql_schema.json")
                     else:
                         print(f"  [GraphQL {path}] Status 200 but no schema: {json.dumps(data)[:200]}")
                 except Exception:
@@ -292,7 +292,7 @@ def test_webhook_ssrf():
 
 # === MAIN ===
 if __name__ == "__main__":
-    print(f"Zendesk IDOR/Access Control Tester")
+    print("Zendesk IDOR/Access Control Tester")
     print(f"Target: {BASE_URL}")
     print(f"Auth: {EMAIL}")
     print("=" * 60)

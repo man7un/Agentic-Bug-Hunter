@@ -15,7 +15,6 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timezone
 
 # Import learn.py functions (same repo)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -276,10 +275,10 @@ def prioritize_intel(results: list[dict], memory: dict) -> dict:
 def format_output(target: str, intel: dict) -> str:
     """Format intel output for terminal display."""
     lines = [
-        f"",
+        "",
         f"{BOLD}INTEL: {target}{RESET}",
         f"{'═' * 50}",
-        f"",
+        "",
     ]
 
     if intel["critical"]:

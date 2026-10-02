@@ -1,13 +1,9 @@
 """Tests for AutopilotGuard — unified pre-request guard for autopilot mode."""
 
 import time
-import pytest
 
 from memory.audit_log import (
     AutopilotGuard,
-    CircuitBreaker,
-    RateLimiter,
-    SafeMethodPolicy,
 )
 
 

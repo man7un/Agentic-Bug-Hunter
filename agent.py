@@ -47,15 +47,14 @@ import time
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 # ── LangGraph optional import ──────────────────────────────────────────────────
 try:
     from langgraph.graph import StateGraph, END
     from langgraph.graph.message import add_messages
-    from langgraph.prebuilt import ToolNode, tools_condition
-    from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, ToolMessage
-    from langchain_core.tools import tool as lc_tool
+    from langgraph.prebuilt import ToolNode, tools_condition  # noqa: F401  (optional-dep probe)
+    from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, ToolMessage  # noqa: F401
+    from langchain_core.tools import tool as lc_tool  # noqa: F401
     try:
         from langchain_ollama import ChatOllama
         _LANGGRAPH_OK = True
@@ -93,7 +92,7 @@ def _h():
 try:
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, _here)
-    from brain import Brain, BRAIN_SYSTEM, MODEL_PRIORITY, OLLAMA_HOST, _pick_model
+    from brain import BRAIN_SYSTEM, MODEL_PRIORITY, OLLAMA_HOST, _pick_model
     _BRAIN_OK = True
 except Exception as _brain_err:
     _BRAIN_OK = False
@@ -1316,11 +1315,9 @@ def build_langgraph_agent(domain: str, dispatcher: ToolDispatcher,
 
     from typing import TypedDict, Annotated
     from langgraph.graph import StateGraph, END
-    from langgraph.graph.message import add_messages
-    from langgraph.prebuilt import ToolNode, tools_condition
-    from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
-    from langchain_core.tools import tool as lc_tool, StructuredTool
-    import inspect
+    from langgraph.prebuilt import ToolNode
+    from langchain_core.messages import HumanMessage, SystemMessage
+    from langchain_core.tools import tool as lc_tool
 
     # ── Wrap dispatcher calls as LangChain tools ──────────────────────────
     lc_tools = []
@@ -1328,7 +1325,7 @@ def build_langgraph_agent(domain: str, dispatcher: ToolDispatcher,
         fn_spec = tool_spec["function"]
         tool_name = fn_spec["name"]
         tool_desc = fn_spec["description"]
-        props     = fn_spec["parameters"].get("properties", {})
+        _props    = fn_spec["parameters"].get("properties", {})
 
         # Create a closure that captures tool_name
         def _make_tool(tname):
@@ -1452,7 +1449,7 @@ def run_agent_hunt(
         try:
             graph   = build_langgraph_agent(domain, dispatcher, memory, picked_model, max_steps)
             initial = {"messages": [HumanMessage(content=f"Hunt {domain}. Begin.")]}
-            result_state = graph.invoke(initial, config={"recursion_limit": max_steps * 2})
+            _result_state = graph.invoke(initial, config={"recursion_limit": max_steps * 2})
             return {
                 "domain":          domain,
                 "success":         True,
@@ -1557,7 +1554,7 @@ Examples:
         bump_file = os.path.join(session_dir, "agent_bump.txt")
         Path(bump_file).write_text(message.strip())
         print(f"[Bump] Wrote guidance to {bump_file}")
-        print(f"[Bump] Agent will pick it up on next step.")
+        print("[Bump] Agent will pick it up on next step.")
         return
 
     if not args.target:

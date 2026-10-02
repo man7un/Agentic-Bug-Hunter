@@ -25,10 +25,9 @@ import re
 import signal
 import subprocess
 import sys
-import time
 import hashlib
 from datetime import datetime
-from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+from urllib.parse import urlparse
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FINDINGS_DIR = os.path.join(BASE_DIR, "findings")
@@ -558,8 +557,8 @@ class ZeroDayFuzzer:
 
             print(f"\n  Results: {self.findings_dir}/")
 
-        print(f"\n  NOTE: All findings need manual verification.")
-        print(f"  False positives are possible — verify before reporting.")
+        print("\n  NOTE: All findings need manual verification.")
+        print("  False positives are possible — verify before reporting.")
         print(f"{'='*55}\n")
 
 

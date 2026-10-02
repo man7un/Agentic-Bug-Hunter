@@ -1,7 +1,6 @@
 """Tests for intel_engine.py — memory-aware intel prioritization."""
 
 import json
-import os
 import pytest
 
 from intel_engine import load_memory_context, prioritize_intel

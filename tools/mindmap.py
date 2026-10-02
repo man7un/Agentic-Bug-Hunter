@@ -11,7 +11,6 @@ Usage:
 
 import argparse
 import os
-import sys
 from datetime import datetime
 
 # ─── Color codes ──────────────────────────────────────────────────────────────

@@ -1125,7 +1125,7 @@ Do NOT fabricate hypothetical chains using invented endpoints or made-up evidenc
         if not self.enabled:
             return ""
 
-        findings_path = Path(findings_dir)
+        _findings_path = Path(findings_dir)
         target        = self._target_from_artifact_dir(findings_dir)
 
         evidence = self._build_report_evidence(findings_dir, recon_dir)

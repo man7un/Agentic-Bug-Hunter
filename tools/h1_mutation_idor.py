@@ -140,7 +140,7 @@ def main():
     # Try node GID access
     q = f'{{ node(id: "{gid}") {{ ... on Report {{ id title state }} }} }}'
     status, resp = gql(args.cookie_b, csrf_b, q)
-    if check(f"node(GID) read as B", status, resp):
+    if check("node(GID) read as B", status, resp):
         findings.append("node GID read")
     time.sleep(0.5)
 
@@ -269,7 +269,7 @@ def main():
 
     for att in attachments[:3]:
         att_id = att.get("id")
-        att_url = att.get("url") or att.get("expiring_url")
+        _att_url = att.get("url") or att.get("expiring_url")
         if att_id:
             # Try accessing attachment metadata as B
             q2 = f'{{ node(id: "{att_id}") {{ ... on Attachment {{ id url expiring_url }} }} }}'

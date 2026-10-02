@@ -1,6 +1,5 @@
 """Tests for memory/pattern_db.py — save, match, duplicate, cross-target."""
 
-import pytest
 
 from memory.pattern_db import PatternDB
 from memory.schemas import CURRENT_SCHEMA_VERSION

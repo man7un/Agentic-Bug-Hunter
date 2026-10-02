@@ -24,7 +24,6 @@ Usage — LLM injection:
 
 import argparse
 import os
-import sys
 
 # Sneaky Bits encoding (U+2062 = 0, U+2064 = 1)
 ZERO = '\u2062'
@@ -710,7 +709,7 @@ def main():
                 f.write(f"=== HIDDEN INJECTION ===\n{attack['hidden']}\n\n=== VISIBLE REPORT ===\n{attack['visible']}")
             print(f"Cleartext ref: {ref_path}")
         elif not args.stats:
-            print(f"\n--- REPORT TEXT (invisible chars embedded) ---")
+            print("\n--- REPORT TEXT (invisible chars embedded) ---")
             print(report)
 
     if args.stats:

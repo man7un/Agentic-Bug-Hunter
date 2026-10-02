@@ -73,7 +73,7 @@ def check_cors():
 
 def check_password_reset_host_header(email: str):
     """Test if Host header injection affects password reset links."""
-    print(f"\n[Password Reset Host Header Injection]")
+    print("\n[Password Reset Host Header Injection]")
     print(f"  Email: {email}")
     print("  Sending 4 variations — check your inbox for reset link domain\n")
 
@@ -191,7 +191,7 @@ def check_token_reuse(token_a: str):
 
     print("  NOTE: Log out manually in browser, then run:")
     print(f"  curl -H 'Authorization: Bearer {token_a}' https://hackerone.com/graphql \\")
-    print(f"       -d '{{\"query\":\"{{me{{id}}}}\"}}' -H 'Content-Type: application/json'")
+    print("       -d '{\"query\":\"{me{id}}\"}' -H 'Content-Type: application/json'")
     print("  If this returns your user ID after logout → session token not invalidated")
 
 

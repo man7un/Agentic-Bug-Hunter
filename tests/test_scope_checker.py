@@ -3,7 +3,6 @@
 This is safety-critical code: 100% coverage required.
 """
 
-import pytest
 
 from scope_checker import ScopeChecker
 

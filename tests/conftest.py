@@ -1,6 +1,5 @@
 """Shared fixtures for hunt memory and scope checker tests."""
 
-import json
 import os
 import sys
 import pytest
