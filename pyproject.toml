@@ -1,0 +1,82 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "claude-bug-bounty"
+version = "4.4.0"
+description = "A Claude Code plugin for professional bug bounty hunting across HackerOne, Bugcrowd, Intigriti, and Immunefi."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "Claude Bug Bounty Hunter Contributors" }]
+keywords = ["bug-bounty", "security", "pentesting", "recon", "claude-code"]
+
+# Core runtime deps used by the top-level tools (learn.py, validate.py,
+# intel_engine.py, hai_probe.py, zendesk_idor_test.py) and the HackerOne MCP
+# server. Everything else those modules need is in the stdlib.
+dependencies = [
+    "requests>=2.31.0",
+    "certifi>=2024.2.2",
+]
+
+[project.optional-dependencies]
+# Headless-browser proof harness: tools/confirm_xss.py (also used by subcat).
+# After install, run `playwright install chromium` once to fetch the browser.
+confirm = [
+    "playwright>=1.40.0",
+]
+# Recon / screenshot-triage helpers (tools/subcat, SimpleReconDorking).
+recon = [
+    "httpx[socks]>=0.28.1",
+    "pyyaml>=5.4.0",
+    "aiohttp>=3.9.0",
+    "rich>=13.0.0",
+    "dnspython>=2.3.0",
+]
+# Android APK secret scanner (tools/mobile_scan.sh -> tools/apkleaks).
+mobile = [
+    "pyaxmlparser>=0.3.24",
+]
+# Test + lint toolchain.
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.5",
+]
+
+[project.urls]
+Homepage = "https://shuvonsec.me"
+
+# This repo is a toolkit of scripts, not an importable package, so declare no
+# modules/packages. `pip install -e .` then installs only the dependencies
+# above without setuptools attempting (and failing) flat-layout autodiscovery
+# over the many top-level directories.
+[tool.setuptools]
+py-modules = []
+
+[tool.pytest.ini_options]
+# Collection is scoped to tests/ on purpose: several files under tools/ match
+# pytest's default *_test.py glob (e.g. tools/zendesk_idor_test.py) and run
+# argparse / sys.exit at import time, which crashes collection if discovered.
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+# Put the repo root on sys.path so tests/conftest.py can `import memory` (a
+# top-level package). Without this the bare `pytest` console script fails with
+# ModuleNotFoundError: No module named 'memory' — only `python -m pytest`, which
+# implicitly adds the cwd, would work. pythonpath makes both invocations work.
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py310"
+# Vendored third-party tools keep their own style; lint only first-party code.
+extend-exclude = [
+    "tools/apkleaks",
+    "tools/simplerecondorking",
+    "tools/subcat",
+    "tools/unkover",
+]
+
+[tool.ruff.lint]
+# Conservative first pass: real errors (pyflakes F) only. Expand over time.
+select = ["F"]
